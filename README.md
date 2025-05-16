@@ -20,7 +20,7 @@ $ docker run -it --rm --name [container-name] ros-kinetic-ubuntu1604
 docker cp [your-container-name]:/root/catkin_ws/src/. ./cakin_ws/src/
 ```
 6. Now, the directory may seem like the following:
-![alt text](image.png)
+![alt text](assets/image/directory.png)
 7. Stop the container and restart it.  
 ```
 $ docker run -it --rm -v ./cakin_ws/src:/root/catkin_ws/src ros-kinetic-ubuntu1604
