@@ -1,13 +1,43 @@
-### Docker
+### Development Guide
 ---
+1. Open terminal.
+2. Clone the project and go to the directory: `prompt2act`.
+```
+$ git clone https://github.com/thisiselijah/prompt2act.git && cd prompt2act
+```
+3. Build the docker image.
+```
+$ docker build -t ros-kinetic-ubuntu1604 .
+```
+4. Run the image with container name.
+```
+$ docker run -it --rm --name [container-name] ros-kinetic-ubuntu1604
+```
+5. Open the other terminal in the identical directory(`prompt2act`).
 
-- *BUILD*: `docker build -t ros-kinetic-ubuntu1604 .`
-- *RUN*: `docker run -it --rm -v ./ros_kinetic_ws/src:/root/catkin_ws/src ros-kinetic-ubuntu1604`
+   Then, copy the Niryo One package to your host.
+```
+docker cp [your-container-name]:/root/catkin_ws/src/. ./cakin_ws/src/
+```
+6. Now, the directory may seem like the following:
+![alt text](image.png)
+7. Stop the container and restart it.  
+```
+$ docker run -it --rm -v ./cakin_ws/src:/root/catkin_ws/src ros-kinetic-ubuntu1604
+```
+<p style="color:red; font-weight: bold; font-size: 14pt;">
+以上步驟可能還會修改!
+</p>
 
 ### Compile
 ---
-`catkin_make`
+```
+!bash
+$source /opt/ros/kinetic/setup.bash && source ~/catkin_ws/devel/setup.bash && catkin_make
+```
 
-`source devel/setup.bash`
 
-然後執行你的 rosrun / roslaunch 等指令
+
+### References
+---
+https://gitcode.com/gh_mirrors/ni/niryo_one_ros/?utm_source=artical_gitcode&index=bottom&type=card&webUrl
