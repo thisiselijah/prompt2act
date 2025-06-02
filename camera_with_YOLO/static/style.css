@@ -1,0 +1,28 @@
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+}
+
+.camera-container {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;  /* 整個容器靠左 */
+    padding: 30px;
+}
+
+.camera-container h1 {
+    width: 800px;              /* 跟圖片寬度一致 */
+    text-align: center;        /* 文字在容器中置中 */
+    margin-bottom: 20px;
+    font-size: 28px;
+    color: #333;
+}
+
+/* 對 img 使用 id 單獨指定樣式 */
+#camera-stream {
+    border: 3px solid #555;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
