@@ -1,7 +1,7 @@
 from ultralytics import YOLO
 
 # 載入預訓練的 YOLOv8n 模型（nano版本）
-model = YOLO("yolov8n.pt")
+model = YOLO("yolov8n-obb.pt")
 
 # Windows 系統使用 multiprocessing 時，必須將訓練代碼包在這個判斷內
 if __name__ == '__main__':

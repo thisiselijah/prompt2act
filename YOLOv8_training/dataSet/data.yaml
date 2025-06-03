@@ -1,13 +1,10 @@
 train: train/images
 val: valid/images
-test: ../test/images
 
-nc: 3
-names: ['blue_block', 'other', 'red_block']
 
-roboflow:
-  workspace: project-pjp7e
-  project: -jlxgb
-  version: 7
-  license: CC BY 4.0
-  url: https://universe.roboflow.com/project-pjp7e/-jlxgb/dataset/7
+names: 
+  0: blue_block
+  1: other
+  2: red_block
+
+obb: True
