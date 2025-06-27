@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>即時鏡頭畫面</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="camera-container">
+        <h1>即時鏡頭畫面</h1>
+        <img id="camera-stream" src="{{ url_for('video') }}" width="800" height="480">
+    </div>
+</body>
+</html>
