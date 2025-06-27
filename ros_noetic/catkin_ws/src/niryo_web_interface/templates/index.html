@@ -1,0 +1,82 @@
+<!--
+<!DOCTYPE html>
+<html>
+<head>
+    <title>即時鏡頭畫面</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="camera-container">
+        <h1>即時鏡頭畫面</h1>
+        <img id="camera-stream" src="{{ url_for('video') }}" width="800" height="480">
+    </div>
+</body>
+</html>
+-->
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>即時鏡頭畫面</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .control-buttons {
+            margin-top: 20px;
+        }
+        button {
+            font-size: 20px;
+            padding: 10px 20px;
+            margin: 0 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="camera-container">
+        <h1>即時鏡頭畫面</h1>
+        <img id="camera-stream" src="{{ url_for('video') }}" width="800" height="480">
+    </div>
+
+    <div class="control-buttons">
+        <button onclick="moveArm('left')">⬅️ 左移</button>
+        <button onclick="moveArm('right')">➡️ 右移</button>
+        <button onclick="setLearningMode()">🧑‍🏫 Learning Mode</button>
+    </div>
+
+    <script>
+    function moveArm(direction) {
+        fetch('/move_arm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ direction: direction })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log(data);
+            alert(data.message);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    }
+
+    function setLearningMode() {
+        fetch('/learning_mode', {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log(data);
+            alert(data.message);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    }
+    </script>
+
+</body>
+</html>
+
