@@ -1,4 +1,0 @@
-dataSet中的data.yaml檔要改成這樣:
-
-train: train/images
-val: valid/images

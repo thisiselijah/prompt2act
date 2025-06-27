@@ -8,6 +8,7 @@ $ git clone https://github.com/thisiselijah/prompt2act.git && cd prompt2act
 3. Build the docker image.
 ```
 $ docker build -t ros-kinetic-ubuntu1604 .
+$ docker build -t ros-noetic-dev .
 ```
 4. Run the image with container name.
 ```
@@ -17,13 +18,13 @@ $ docker run -it --rm --name [container-name] ros-kinetic-ubuntu1604
 
    Then, copy the Niryo One package to your host.
 ```
-docker cp [your-container-name]:/root/catkin_ws/src/. ./cakin_ws/src/
+docker cp [your-container-name]:/root/catkin_ws/src/. ./catkin_ws/src/
 ```
 6. Now, the directory may seem like the following:
-![alt text](assets/image/directory.png)
+![alt text](assets/images/directory.png)
 7. Stop the container and restart it.  
 ```
-$ docker run -it --rm -v ./cakin_ws/src:/root/catkin_ws/src ros-kinetic-ubuntu1604
+$ docker run -it --rm -v ./catkin_ws/src:/root/catkin_ws/src ros-kinetic-ubuntu1604
 ```
 <p style="color:red; font-weight: bold; font-size: 14pt;">
 以上步驟可能還會修改!
