@@ -1,82 +1,46 @@
-<!--
 <!DOCTYPE html>
 <html>
 <head>
     <title>即時鏡頭畫面</title>
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+
+    <!--CSS-->
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
+
 <body>
-    <div class="camera-container">
-        <h1>即時鏡頭畫面</h1>
-        <img id="camera-stream" src="{{ url_for('video') }}" width="800" height="480">
+    <div class="camera-wrapper">
+        <div class="camera-container">
+            <div class="content-row">
+
+                 <!-- 左邊：鏡頭畫面 -->
+                <div class="vertical-container">
+                    <h1>鏡頭畫面</h1>
+                    <img id="camera-stream" src="{{ url_for('video') }}" width="800" height="480">
+                </div>
+
+                <!-- 右邊：行為樹 -->
+                <div class="vertical-container">
+                    <h1>行為樹</h1>
+                    <div class="behavior-tree-box">
+                        <!-- 你可以在這裡放其他功能或資訊 -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
     </div>
-</body>
-</html>
--->
 
-
-
-<!DOCTYPE html>
-<html>
-<head>
-    <title>即時鏡頭畫面</title>
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
-    <style>
-        .control-buttons {
-            margin-top: 20px;
-        }
-        button {
-            font-size: 20px;
-            padding: 10px 20px;
-            margin: 0 10px;
-            cursor: pointer;
-        }
-    </style>
-</head>
-<body>
-    <div class="camera-container">
-        <h1>即時鏡頭畫面</h1>
-        <img id="camera-stream" src="{{ url_for('video') }}" width="800" height="480">
-    </div>
 
     <div class="control-buttons">
-        <button onclick="moveArm('left')">⬅️ 左移</button>
-        <button onclick="moveArm('right')">➡️ 右移</button>
-        <button onclick="setLearningMode()">🧑‍🏫 Learning Mode</button>
+        <button class="operate-buttons" onclick="moveArm('left')">⬅️ 左移</button>
+        <button class="operate-buttons" onclick="moveArm('right')">➡️ 右移</button>
+        <button class="operate-buttons" onclick="setLearningMode()">Learning Mode</button>
+        <button id="voice-btn" onclick="startVoiceInput()">🎤 語音輸入</button>
     </div>
+    
 
-    <script>
-    function moveArm(direction) {
-        fetch('/move_arm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ direction: direction })
-        })
-        .then(response => response.json())
-        .then(data => {
-            console.log(data);
-            alert(data.message);
-        })
-        .catch(error => {
-            console.error('Error:', error);
-        });
-    }
-
-    function setLearningMode() {
-        fetch('/learning_mode', {
-            method: 'POST'
-        })
-        .then(response => response.json())
-        .then(data => {
-            console.log(data);
-            alert(data.message);
-        })
-        .catch(error => {
-            console.error('Error:', error);
-        });
-    }
-    </script>
-
+    <!-- JS -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
 

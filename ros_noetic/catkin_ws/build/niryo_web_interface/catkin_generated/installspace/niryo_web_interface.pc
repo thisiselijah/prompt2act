@@ -1,0 +1,8 @@
+prefix=/root/catkin_ws/install
+
+Name: niryo_web_interface
+Description: Description of niryo_web_interface
+Version: 0.0.1
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

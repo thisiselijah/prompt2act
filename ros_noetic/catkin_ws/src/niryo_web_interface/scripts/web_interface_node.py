@@ -22,7 +22,9 @@ rospy.loginfo(f"Loading model from: {model_path}") # (可選) 印出路徑方便
 rospy.init_node('web_interface_node', anonymous=True)  #anonymous=True 讓節點支援衝突
 
 
-app = Flask(__name__, template_folder=os.path.join(package_path, 'templates'))
+app = Flask(__name__,
+            template_folder=os.path.join(package_path, 'templates'),
+            static_folder=os.path.join(package_path, 'static'))
 
 
 try:

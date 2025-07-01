@@ -4,7 +4,7 @@ import rospy
 from std_msgs.msg import String
 from pyniryo import NiryoRobot
 
-niryo = NiryoRobot("192.168.x.x")  # 請改成你的 IP
+niryo = NiryoRobot("192.168.232.26")  # 請改成你的 IP
 
 print("執行自動校正...")
 niryo.calibrate_auto()
@@ -23,7 +23,7 @@ def callback(msg):
         joints[0] -= 0.1
         niryo.move_joints(joints)
     elif command == "learning_mode":
-        niryo.change_learning_mode(True)
+        niryo.set_learning_mode(True)  # 啟用 Learning Mode
     else:
         rospy.loginfo(f"未知指令: {command}")
 
