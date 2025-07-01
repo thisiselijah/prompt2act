@@ -34,6 +34,7 @@ RUN python3 -m pip install --no-cache-dir --ignore-installed \
     ultralytics \
     flask \
     numpy \
+    opencv-contrib-python\
     # --- 您可以在此加入其他需要的 pip 套件 ---
     && rm -rf /root/.cache/pip
 
