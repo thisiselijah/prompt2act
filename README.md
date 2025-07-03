@@ -26,7 +26,7 @@ docker cp [your-container-name]:/root/catkin_ws/src/. ./catkin_ws/src/
 7. Stop the container and restart it.  
 ```
 $ docker run -it --rm --name <container_name> -v ./catkin_ws/src:/root/catkin_ws/src ros-kinetic-dev
-$ docker run -it --rm --net=host --device=/dev/video0:/dev/video0 --name <container_name> -v ./catkin_ws/src:/root/catkin_ws/src ros-noetic-dev
+$ docker run -it --rm --name <container_name> --net=host --device=/dev/video0:/dev/video0 -v ./catkin_ws/src:/root/catkin_ws/src ros-noetic-dev
 ```
 <p style="color:red; font-weight: bold; font-size: 14pt;">
 以上步驟可能還會修改!
