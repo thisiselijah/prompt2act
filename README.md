@@ -1,7 +1,9 @@
 ### Playground Usage
 
+- Run playgound with `docker run`
+
 ```
-docker run -it --rm \
+$ docker run -it --rm \
   -e DISPLAY=host.docker.internal:0 \
   -e QT_X11_NO_MITSHM=1 \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
