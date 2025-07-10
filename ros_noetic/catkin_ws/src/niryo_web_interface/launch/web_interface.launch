@@ -1,3 +1,0 @@
-<launch>
-    <node name="web_interface_node" pkg="niryo_web_interface" type="web_interface_node.py" output="screen" />
-</launch>

@@ -1,3 +1,0 @@
-<launch>
-    <node name="robot_control_node" pkg="niryo_web_interface" type="robot_control_node.py" output="screen" />
-</launch>

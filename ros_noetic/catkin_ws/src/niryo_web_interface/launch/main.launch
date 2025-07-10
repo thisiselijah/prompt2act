@@ -1,4 +1,0 @@
-<launch>
-  <include file="$(find niryo_web_interface)/launch/robot_control.launch" />
-  <include file="$(find niryo_web_interface)/launch/web_interface.launch" />
-</launch>
