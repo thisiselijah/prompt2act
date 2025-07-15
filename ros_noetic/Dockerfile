@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y \
     terminator \
     iputils-ping \
     net-tools \
-    # --- You can add other required apt packages here ---
     && rosdep update \
     && rm -rf /var/lib/apt/lists/*
 
@@ -31,9 +30,8 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     flask \
     numpy \
     opencv-contrib-python \
-    pyniryo==1.1.2 \
+    pyniryo==1.1.1 \
     py_trees==0.7.* \
-    # --- You can add other required pip packages here ---
     && rm -rf /root/.cache/pip
 
 # STEP 5: Catkin Workspace & Source Dependencies
