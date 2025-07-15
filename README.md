@@ -41,8 +41,6 @@ $ roslaunch <package_name> <launch_file> # launch all nodes
 $ rosrun # launch specific node
 ```
 
-
-
 ### References
 ---
 - https://hackmd.io/@NCTU-auv/B1_ErlCn3
@@ -50,4 +48,5 @@ $ rosrun # launch specific node
 - https://github.com/splintered-reality/py_trees_ros/tree/release/0.6.x
 - https://github.com/splintered-reality/rqt_py_trees/tree/release/0.4.x
 - https://github.com/splintered-reality/py_trees_msgs/tree/release/0.3.x
+- https://gitcode.com/gh_mirrors/ni/niryo_one_ros/?utm_source=artical_gitcode&index=bottom&type=card&webUrl
 - https://gitcode.com/gh_mirrors/ni/niryo_one_ros/?utm_source=artical_gitcode&index=bottom&type=card&webUrl
