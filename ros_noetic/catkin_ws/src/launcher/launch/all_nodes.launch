@@ -1,0 +1,15 @@
+<launch>
+    <node name="node1" pkg="package1" type="node1_executable" output="screen">
+        <param name="param1" value="value1"/>
+    </node>
+    
+    <node name="node2" pkg="package2" type="node2_executable" output="screen">
+        <param name="param2" value="value2"/>
+    </node>
+    
+    <node name="node3" pkg="package3" type="node3_executable" output="screen">
+        <param name="param3" value="value3"/>
+    </node>
+    
+    <!-- Add more nodes as needed -->
+</launch>
