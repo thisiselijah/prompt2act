@@ -18,16 +18,10 @@ def callback(msg):
     rospy.loginfo(f"收到指令: {command}")
 
     try:
-        if command == "left":
-            joints = niryo.get_joints()
-            joints[0] += 0.1  # 左旋轉
-            niryo.move_joints(joints)
-
-        elif command == "right":
-            joints = niryo.get_joints()
-            joints[0] -= 0.1  # 右旋轉
-            niryo.move_joints(joints)
-
+        if command == "open":
+            niryo.open_gripper()
+        elif command == "close":
+            niryo.close_gripper()
         elif command == "learning_mode":
             niryo.set_learning_mode(True)  # 進入 Learning Mode
 
@@ -37,26 +31,30 @@ def callback(msg):
         elif command.startswith("pick_at:"):
             # 解析指令格式
             parts = command.replace("pick_at:", "").split(",")
-            if len(parts) != 2:
+            if len(parts) != 3:
                 raise ValueError("格式錯誤，應為 pick_at:x,y")
 
             x = float(parts[0])
             y = float(parts[1])
-            z = 0.2  # 抓取高度（公尺）
+            z = 0.163  # 抓取高度（公尺）
             approach_z = z + 0.1  # 接近高度
 
-            roll = 0
-            pitch = 1.53
-            yaw = 0
+            # 從 detected_target 取出 roll，沒有就用預設值
+            roll = float(parts[2])
+            pitch = 1.438
+            yaw = -0.35
 
+            rospy.loginfo(f"🚀 移動至 ({x:.2f}, {y:.2f}) 上方準備抓取，roll={roll:.3f}")
+            niryo.open_gripper()
 
-            rospy.loginfo(f"🚀 移動至 ({x:.2f}, {y:.2f}) 上方準備抓取")
-
-            pose_obj = PoseObject(x,y,z,roll,pitch,yaw)
+            pose_obj = PoseObject(x, y, z, roll, pitch, yaw)
 
             niryo.move_pose(pose_obj)
 
+            niryo.close_gripper()
+
             rospy.loginfo("✅ 抓取完成")
+
 
 
         else:
