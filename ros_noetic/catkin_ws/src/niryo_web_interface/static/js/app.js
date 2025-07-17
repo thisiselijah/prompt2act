@@ -28,4 +28,25 @@ function setLearningMode() {
     });
 }
 
+function pickObject() {
+    fetch('/pick_object', {
+        method: 'POST'
+    })
+    .then(res => res.json())
+    .then(data => alert(data.message))
+    .catch(err => console.error(err));
+}
+
+function moveToHome() {
+    fetch('/move_to_home', { method: 'POST' })
+    .then(response => response.json())
+    .then(data => {
+        alert(data.message || data.error);
+    })
+    .catch(err => {
+        alert('錯誤: ' + err);
+    });
+}
+
+
 
