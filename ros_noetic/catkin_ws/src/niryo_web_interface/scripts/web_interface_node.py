@@ -11,6 +11,7 @@ import numpy as np
 from std_msgs.msg import String   # ROS 訊息型態
 import threading
 import time
+import math  
 
 # --- ROS 初始化 ---
 rospack = rospkg.RosPack()
@@ -54,7 +55,7 @@ TABLE_HEIGHT_CM = 30
 arm_command_pub = rospy.Publisher('/niryo_arm_command', String, queue_size=10)
 
 # --- 全域變數 ---
-detected_target = {"x": None, "y": None}  # 儲存 YOLO 偵測結果（世界座標）
+detected_target = {"x": None, "y": None, "roll": None}  # 儲存 YOLO 偵測結果（世界座標）
 output_frame = None                      # 最新畫面
 lock = threading.Lock()                  # 保護畫面更新的鎖
 
@@ -70,6 +71,9 @@ def camera_to_robot_coords(wx, wy):
 # --- 背景執行緒：處理即時畫面（YOLO 偵測 + ArUco 框） ---
 def process_frames():
     global output_frame, detected_target
+
+    prev_aruco_points = None  # 初始化
+    
 
     while not rospy.is_shutdown():
         success, frame = camera.read()
@@ -101,7 +105,9 @@ def process_frames():
                     [0, 1],  # 左下
                 ], dtype="float32")
 
-                M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+                if not np.array_equal(prev_aruco_points, aruco_points):
+                    M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+                    prev_aruco_points = aruco_points.copy()
 
                 # --- YOLOv8 OBB 偵測 ---
                 results = model(frame, verbose=False)[0]
@@ -116,38 +122,60 @@ def process_frames():
                         conf = float(box.conf[0])
                         label = f"{label_name} {conf:.2f}"
 
+                        
+
+                        # 確保有 OBB 資訊
                         if hasattr(box, "xyxyxyxy") and box.xyxyxyxy is not None:
                             pts = box.xyxyxyxy.cpu().numpy().astype(int).reshape((-1, 2))
                             cx = int(np.mean(pts[:, 0]))
                             cy = int(np.mean(pts[:, 1]))
 
-                            # --- 座標轉換至世界單位格 ---
+                            # 計算 roll 角度（單位：弧度）
+                            dx = pts[1][0] - pts[0][0]
+                            dy = pts[1][1] - pts[0][1]
+                            
+
+                            # --- 座標轉換至桌面標準化平面 ---
                             world_pos = cv2.perspectiveTransform(
                                 np.array([[[cx, cy]]], dtype='float32'), M)
                             wx, wy = world_pos[0][0]
 
-                            # --- 若座標在桌面內，轉為機械臂世界座標 ---
+                            # --- 檢查是否在有效區域內，並轉換為機械臂座標 ---
                             if 0 <= wx <= 1 and 0 <= wy <= 1:
                                 real_x = wx * TABLE_WIDTH_CM
                                 real_y = wy * TABLE_HEIGHT_CM
                                 robot_x, robot_y = camera_to_robot_coords(wx, wy)
+
+                                roll_rad = math.atan2(dy, dx)
+                                roll_deg = math.degrees(roll_rad)
+
+                                if roll_deg < -90:
+                                    roll_deg += 180
+                                elif roll_deg > 90:
+                                    roll_deg -= 180
+                                roll_rad = math.radians(roll_deg)
+
+
                                 detected_target["x"] = robot_x
                                 detected_target["y"] = robot_y
+                                detected_target["roll"] = roll_rad
+                                detected_target["label"] = label_name.lower()
 
-                                # 標註目標文字
+                                # 顯示標籤
                                 text = f"{label} ({real_x:.1f}cm, {real_y:.1f}cm)"
                                 cv2.putText(frame, text, (cx, cy - 10),
                                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
 
-                            # 繪製 OBB 外框與中心點
-                            cv2.polylines(frame, [pts.reshape(-1, 1, 2)], True, (0, 255, 0), 2)
+                            # 畫出 OBB 框與中心點
+                            cv2.polylines(frame, [pts.reshape(-1, 1, 2)], isClosed=True, color=(0, 255, 0), thickness=2)
                             cv2.circle(frame, (cx, cy), 5, (0, 0, 255), -1)
+
 
         # 更新畫面（需加鎖保護）
         with lock:
             output_frame = frame.copy()
 
-        time.sleep(0.01)  # 降低 CPU 使用率
+        time.sleep(0.05)  # 降低 CPU 使用率
 
 
 # --- 串流畫面傳送函式（Flask 調用）---
@@ -172,8 +200,9 @@ def index():
 def video():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')  # 視訊串流
 
-@app.route('/move_arm', methods=['POST'])
-def move_arm():
+#控制開合
+@app.route('/open_and_close', methods=['POST'])
+def open_and_close():
     data = request.get_json()
     direction = data.get("direction", "")
     arm_command_pub.publish(direction)
@@ -192,15 +221,25 @@ def move_to_home():
 
 @app.route('/pick_object', methods=['POST'])
 def pick_object():
-    x = detected_target["x"]
-    y = detected_target["y"]
+    data = request.get_json()
+    target_label = data.get("label", "").lower()
 
-    if x is None or y is None:
-        return jsonify({"message": "❌ 尚未偵測到目標物"}), 400
+    x = detected_target.get("x")
+    y = detected_target.get("y")
+    roll = detected_target.get("roll")
+    label = detected_target.get("label")
 
-    command = f"pick_at:{x:.3f},{y:.3f}"
+    if x is None or y is None or roll is None or label != target_label:
+        return jsonify({"message": f"❌ 尚未偵測到 {target_label} 目標物"}), 400
+
+    command = f"pick_at:{x:.3f},{y:.3f},{roll:.3f}"
     arm_command_pub.publish(command)
-    return jsonify({"message": f"已送出抓取指令，位置 ({x:.2f}, {y:.2f})"})
+    return jsonify({
+        "message": f"✅ 已送出抓取指令：{target_label} → ({x:.2f}, {y:.2f}), roll = {roll:.3f}"
+    })
+
+
+
 
 
 # --- 主程式入口點 ---

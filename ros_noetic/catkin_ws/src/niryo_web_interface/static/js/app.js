@@ -1,5 +1,5 @@
-function moveArm(direction) {
-    fetch('/move_arm', {
+function open_and_close(direction) {   
+    fetch('/open_and_close', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ direction: direction })
@@ -13,6 +13,7 @@ function moveArm(direction) {
         console.error('Error:', error);
     });
 }
+
 
 function setLearningMode() {
     fetch('/learning_mode', {
@@ -28,9 +29,11 @@ function setLearningMode() {
     });
 }
 
-function pickObject() {
+function pickObject(color) {
     fetch('/pick_object', {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: color })
     })
     .then(res => res.json())
     .then(data => alert(data.message))

@@ -4,6 +4,7 @@ from ultralytics import YOLO
 import numpy as np
 import threading
 import time
+import supervision as sv 
 
 # 載入 YOLO 模型（請確認模型路徑正確）
 model = YOLO("model/best.pt")
@@ -28,41 +29,33 @@ output_frame = None  # 儲存最新處理後的畫面
 
 
 def process_frames():
-    """
-    背景執行緒：處理攝影機畫面，進行 ArUco 偵測與 YOLO 物件辨識，
-    並將結果畫到影像上。
-    """
     global output_frame
-    while True:
-        success, frame = camera.read()  # 讀取影像
-        if not success:
-            continue  # 如果讀不到影像，跳過此次迴圈
+    oriented_box_annotator = sv.OrientedBoxAnnotator(thickness=3)
 
-        # 轉成灰階以利 ArUco 偵測
+    while True:
+        success, frame = camera.read()
+        if not success:
+            continue
+
+        # ArUco 偵測
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         corners, ids, _ = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=aruco_params)
 
-        # 若偵測到至少 4 個 ArUco 標記
         if ids is not None and len(ids) >= 4:
             id_list = ids.flatten()
             aruco_points = {}
-
-            # 取得每個 ArUco 的中心點
             for i, corner in enumerate(corners):
                 id = id_list[i]
                 aruco_points[id] = corner[0].mean(axis=0)
 
-            # 確保四個特定的 ID 存在（0,1,2,3）
             if all(k in aruco_points for k in [0, 1, 2, 3]):
-                # 組合對應影像座標的四個角落
                 src_pts = np.array([
-                    aruco_points[0],  # 左下
-                    aruco_points[1],  # 右下
-                    aruco_points[2],  # 右上
-                    aruco_points[3]   # 左上
+                    aruco_points[0],
+                    aruco_points[1],
+                    aruco_points[2],
+                    aruco_points[3]
                 ], dtype="float32")
 
-                # 對應到桌面標準平面 (0~1) 區域
                 dst_pts = np.array([
                     [0, 0],
                     [1, 0],
@@ -70,55 +63,62 @@ def process_frames():
                     [0, 1]
                 ], dtype="float32")
 
-                # 計算透視轉換矩陣 M
                 M = cv2.getPerspectiveTransform(src_pts, dst_pts)
 
-                # 使用 YOLO 模型進行物件辨識
+                # YOLO 偵測
                 results = model(frame, verbose=False)[0]
 
-                # 檢查是否有偵測到物件（且為旋轉框）
                 if results and results.obb is not None and len(results.obb) > 0:
+                    # 轉換成 supervision 偵測物件
+                    detections = sv.Detections.from_ultralytics(results)
+
+                    # 用 supervision 畫旋轉框（這裡會畫出所有旋轉框和標籤）
+                    annotated_frame = oriented_box_annotator.annotate(scene=frame, detections=detections)
+
+                    # 在 annotated_frame 上疊加座標轉換的文字標籤
                     for box in results.obb:
-                        cls_id = int(box.cls[0])  # 取得類別 ID
-                        label_name = model.names[cls_id]  # 取得標籤名稱
+                        try:
+                            x, y, w_box, h_box, angle = box.xywhr[0].cpu().numpy()
+                            conf = float(box.conf[0].cpu().numpy())
+                            cls_id = int(box.cls[0].cpu().numpy())
+                            label_name = model.names[cls_id]
 
-                        if label_name.lower() == "other":
-                            continue  # 忽略「其他」類型
+                            if label_name.lower() == "other":
+                                continue
 
-                        conf = float(box.conf[0])  # 信心度
-                        label = f"{label_name} {conf:.2f}"
+                            h_img, w_img = frame.shape[:2]
+                            cx = x * w_img
+                            cy = y * h_img
 
-                        # 取得旋轉框的四個點
-                        if hasattr(box, "xyxyxyxy") and box.xyxyxyxy is not None:
-                            pts = box.xyxyxyxy.cpu().numpy().astype(int).reshape((-1, 2))
-
-                            # 計算旋轉框的中心點
-                            cx = int(np.mean(pts[:, 0]))
-                            cy = int(np.mean(pts[:, 1]))
-
-                            # 將中心點從影像座標轉換到桌面座標系
+                            # 座標轉世界座標
                             world_pos = cv2.perspectiveTransform(np.array([[[cx, cy]]], dtype='float32'), M)
                             wx, wy = world_pos[0][0]
 
-                            # 檢查是否落在桌面範圍內（0~1）
                             if 0 <= wx <= 1 and 0 <= wy <= 1:
                                 real_x = wx * TABLE_WIDTH_CM
                                 real_y = wy * TABLE_HEIGHT_CM
+                                text = f"({real_x:.1f}cm, {real_y:.1f}cm)"
+                                # 文字位置稍微往上方一點
+                                cv2.putText(annotated_frame, text, (int(cx), int(cy) - 35),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
-                                # 顯示座標與標籤
-                                text = f"{label} ({real_x:.1f}cm, {real_y:.1f}cm)"
-                                cv2.putText(frame, text, (cx, cy - 10),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+                        except Exception as e:
+                            print("⚠️ 處理座標轉換錯誤:", e)
 
-                            # 畫出旋轉框與中心點
-                            cv2.polylines(frame, [pts.reshape(-1, 1, 2)], isClosed=True, color=(0, 255, 0), thickness=2)
-                            cv2.circle(frame, (cx, cy), 5, (0, 0, 255), -1)
+                    # 更新畫面
+                    with lock:
+                        output_frame = annotated_frame.copy()
 
-        # 更新最新畫面（加鎖保護）
-        with lock:
-            output_frame = frame.copy()
+                else:
+                    # 如果沒物件，直接更新原始影像
+                    with lock:
+                        output_frame = frame.copy()
+        else:
+            # 若 ArUco 不足 4 個，直接更新原始影像
+            with lock:
+                output_frame = frame.copy()
 
-        time.sleep(0.01)  # 暫停一下，避免佔用過多 CPU 資源
+        time.sleep(0.01)
 
 
 def generate_frames():
