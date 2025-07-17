@@ -30,9 +30,12 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     flask \
     numpy \
     opencv-contrib-python \
-    pyniryo==1.1.1 \
+
     py_trees==0.7.* \
     && rm -rf /root/.cache/pip
+
+# 🆕 STEP 4.1: 複製你修改後的 pyniryo 原始碼進去
+COPY pyniryo /usr/local/lib/python3.8/dist-packages/pyniryo
 
 # STEP 5: Catkin Workspace & Source Dependencies
 # Create the workspace and clone source dependencies in one layer.
@@ -53,4 +56,6 @@ RUN chmod +x /ros_entrypoint.sh
 ENTRYPOINT ["/ros_entrypoint.sh"]
 
 # The default command to execute after the container starts (enter bash)
+
 CMD ["bash"]
+

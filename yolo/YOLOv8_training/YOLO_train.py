@@ -15,5 +15,6 @@ if __name__ == '__main__':
 
         #指定輸出資料夾：
         project="output",          # 預設會在這個資料夾下建立子資料夾
-        name="red_blue_model"      # 子資料夾名稱，例如：output_dir/red_blue_model
+        name="red_blue_model",      # 子資料夾名稱，例如：output_dir/red_blue_model
+        task='obb'                 # 加上這行，才會執行旋轉框任務
     )

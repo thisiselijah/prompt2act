@@ -1,78 +1,80 @@
 #!/usr/bin/env python3
 
-import rospkg # <--- 1. 導入 rospkg 函式庫
-import os      # <--- 2. 導入 os 函式庫來組合路徑
-
-import rospy
-from flask import Flask, render_template, Response, request, jsonify
-import cv2
-from ultralytics import YOLO
+# --- 套件匯入區 ---
+import rospkg                     # 取得 ROS 套件目錄
+import os
+import rospy                      # ROS Python API
+from flask import Flask, render_template, Response, request, jsonify  # 建立 Web 應用
+import cv2                        # OpenCV 影像處理
+from ultralytics import YOLO      # YOLOv8 模型
 import numpy as np
-from std_msgs.msg import String
+from std_msgs.msg import String   # ROS 訊息型態
+import threading
+import time
 
-import time  # 引入 time 模組 (測試用)
-
+# --- ROS 初始化 ---
 rospack = rospkg.RosPack()
-package_path = rospack.get_path('niryo_web_interface') # 請確認 'niryo_web_interface' 是你的 package 名稱
+package_path = rospack.get_path('niryo_web_interface')   # 取得 ROS 專案目錄
+model_path = os.path.join(package_path, 'model', 'best.pt')  # YOLO 模型路徑
 
-model_path = os.path.join(package_path, 'model', 'best.pt')
+rospy.loginfo(f"Loading model from: {model_path}")
+rospy.init_node('web_interface_node', anonymous=True)  # 初始化 ROS Node
 
-rospy.loginfo(f"Loading model from: {model_path}") # (可選) 印出路徑方便除錯
-
-rospy.init_node('web_interface_node', anonymous=True)  #anonymous=True 讓節點支援衝突
-
-
+# --- Flask 初始化 ---
 app = Flask(__name__,
-            template_folder=os.path.join(package_path, 'templates'),
-            static_folder=os.path.join(package_path, 'static'))
+            template_folder=os.path.join(package_path, 'templates'),   # HTML 模板
+            static_folder=os.path.join(package_path, 'static'))       # 靜態資源（CSS/JS）
 
-
+# --- 載入 YOLO 模型 ---
 try:
-    model = YOLO(model_path)
+    model = YOLO(model_path) 
 except Exception as e:
     rospy.logerr(f"Failed to load YOLO model: {e}")
-    # exit()
-    
-camera = None
 
-rospy.loginfo("嘗試開啟攝影機...")
-# First, try opening by device path, then by index.
-# Using CAP_V4L2 backend is often more reliable on Linux.
-camera = cv2.VideoCapture('/dev/video0', cv2.CAP_V4L2)
+# --- 開啟攝影機 ---
+camera = cv2.VideoCapture('/dev/video0', cv2.CAP_V4L2)  # 嘗試開啟 USB 攝影機（Linux）
 if not camera.isOpened():
-    rospy.logwarn("無法透過 /dev/video0 開啟攝影機，嘗試使用索引 0...")
-    camera = cv2.VideoCapture(0, cv2.CAP_V4L2)
+    rospy.logwarn("無法透過 /dev/video0 開啟攝影機，改用 index 0")
+    camera = cv2.VideoCapture(0, cv2.CAP_V4L2)  # 改用 index
 
 if not camera.isOpened():
-    rospy.logerr("❌ 無法開啟攝影機。請確認：")
-    rospy.logerr("  1. 攝影機已正確連接。")
-    rospy.logerr("  2. 若在 Docker 容器中，確認已使用 --device=/dev/video0 掛載。")
-    rospy.logerr("  3. 在(容器)終端機執行 `ls -l /dev/video0` 確認設備存在且權限正確 (e.g. crw-rw-rw-).")
+    rospy.logerr("❌ 攝影機開啟失敗，請檢查連接或權限")
     exit()
+rospy.loginfo("✅ 攝影機開啟成功")
 
-rospy.loginfo("✅ 攝影機開啟成功!")
-
+# --- ArUco 相關設定（用於標記桌面四角）---
 aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 aruco_params = cv2.aruco.DetectorParameters()
 
-TABLE_WIDTH_CM = 60
-TABLE_HEIGHT_CM = 40
+# 桌面尺寸（單位：公分）
+TABLE_WIDTH_CM = 23
+TABLE_HEIGHT_CM = 30
 
+# --- ROS Publisher ---
 arm_command_pub = rospy.Publisher('/niryo_arm_command', String, queue_size=10)
 
-def generate_frames():
-    rospy.logwarn("鏡頭開始")
-    while not rospy.is_shutdown():
-        # rospy.logwarn("嘗試讀取 frame...")  # 測試點 1
+# --- 全域變數 ---
+detected_target = {"x": None, "y": None}  # 儲存 YOLO 偵測結果（世界座標）
+output_frame = None                      # 最新畫面
+lock = threading.Lock()                  # 保護畫面更新的鎖
 
+# --- 座標轉換：將桌面單位座標轉成 Niryo 機械臂世界座標（公尺） ---
+def camera_to_robot_coords(wx, wy):
+    origin_x = 0.2     # Niryo 座標系中，桌面左上角 x 偏移（公尺）
+    origin_y = -0.1    # Niryo 座標系中，桌面左上角 y 偏移（公尺）
+    real_x_cm = wx * TABLE_WIDTH_CM
+    real_y_cm = wy * TABLE_HEIGHT_CM
+    return origin_x + real_x_cm / 100.0, origin_y + real_y_cm / 100.0
+
+
+# --- 背景執行緒：處理即時畫面（YOLO 偵測 + ArUco 框） ---
+def process_frames():
+    global output_frame, detected_target
+
+    while not rospy.is_shutdown():
         success, frame = camera.read()
-        # if not success:
-        #     rospy.logwarn("讀不到影像")
-        #     time.sleep(1)  # 加上一秒延遲
-        #     continue  # 改成繼續嘗試
-        #     # break
-        
-        # rospy.logwarn("成功讀取影像")  # 測試點 2
+        if not success:
+            continue
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         corners, ids, _ = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=aruco_params)
@@ -80,24 +82,34 @@ def generate_frames():
         if ids is not None and len(ids) >= 4:
             id_list = ids.flatten()
             aruco_points = {}
-
             for i, corner in enumerate(corners):
-                id = id_list[i]
-                aruco_points[id] = corner[0].mean(axis=0)
+                aruco_points[id_list[i]] = corner[0].mean(axis=0)  # 取得每個 ArUco 中心點
 
+            # 根據 ArUco ID 位置順序重排
             if all(k in aruco_points for k in [0, 1, 2, 3]):
-                src_pts = np.array([aruco_points[0], aruco_points[1],
-                                    aruco_points[2], aruco_points[3]], dtype="float32")
+                src_pts = np.array([
+                    aruco_points[3],  # 左上
+                    aruco_points[2],  # 右上
+                    aruco_points[1],  # 右下
+                    aruco_points[0]   # 左下
+                ], dtype="float32")
 
-                dst_pts = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype="float32")
+                dst_pts = np.array([
+                    [0, 0],  # 轉換後的左上角
+                    [1, 0],  # 右上
+                    [1, 1],  # 右下
+                    [0, 1],  # 左下
+                ], dtype="float32")
+
                 M = cv2.getPerspectiveTransform(src_pts, dst_pts)
 
+                # --- YOLOv8 OBB 偵測 ---
                 results = model(frame, verbose=False)[0]
+
                 if results and results.obb is not None and len(results.obb) > 0:
                     for box in results.obb:
                         cls_id = int(box.cls[0])
                         label_name = model.names[cls_id]
-
                         if label_name.lower() == "other":
                             continue
 
@@ -108,33 +120,57 @@ def generate_frames():
                             pts = box.xyxyxyxy.cpu().numpy().astype(int).reshape((-1, 2))
                             cx = int(np.mean(pts[:, 0]))
                             cy = int(np.mean(pts[:, 1]))
-                            world_pos = cv2.perspectiveTransform(np.array([[[cx, cy]]], dtype='float32'), M)
+
+                            # --- 座標轉換至世界單位格 ---
+                            world_pos = cv2.perspectiveTransform(
+                                np.array([[[cx, cy]]], dtype='float32'), M)
                             wx, wy = world_pos[0][0]
 
+                            # --- 若座標在桌面內，轉為機械臂世界座標 ---
                             if 0 <= wx <= 1 and 0 <= wy <= 1:
                                 real_x = wx * TABLE_WIDTH_CM
                                 real_y = wy * TABLE_HEIGHT_CM
+                                robot_x, robot_y = camera_to_robot_coords(wx, wy)
+                                detected_target["x"] = robot_x
+                                detected_target["y"] = robot_y
+
+                                # 標註目標文字
                                 text = f"{label} ({real_x:.1f}cm, {real_y:.1f}cm)"
                                 cv2.putText(frame, text, (cx, cy - 10),
                                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-                            cv2.polylines(frame, [pts.reshape(-1, 1, 2)], isClosed=True, color=(0, 255, 0), thickness=2)
+
+                            # 繪製 OBB 外框與中心點
+                            cv2.polylines(frame, [pts.reshape(-1, 1, 2)], True, (0, 255, 0), 2)
                             cv2.circle(frame, (cx, cy), 5, (0, 0, 255), -1)
 
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
+        # 更新畫面（需加鎖保護）
+        with lock:
+            output_frame = frame.copy()
 
+        time.sleep(0.01)  # 降低 CPU 使用率
+
+
+# --- 串流畫面傳送函式（Flask 調用）---
+def generate_frames():
+    global output_frame
+    while True:
+        with lock:
+            if output_frame is None:
+                continue
+            ret, buffer = cv2.imencode('.jpg', output_frame)
+            frame = buffer.tobytes()
         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
 
+# --- Flask 路由區塊 ---
+
 @app.route('/')
 def index():
-    return render_template('index.html')
-
+    return render_template('index.html')  # 主頁面（含視訊與控制 UI）
 
 @app.route('/video')
 def video():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')  # 視訊串流
 
 @app.route('/move_arm', methods=['POST'])
 def move_arm():
@@ -143,12 +179,33 @@ def move_arm():
     arm_command_pub.publish(direction)
     return jsonify({"message": f"已送出 {direction} 指令"})
 
-
 @app.route('/learning_mode', methods=['POST'])
 def learning_mode():
     arm_command_pub.publish("learning_mode")
     return jsonify({"message": "已切換至 Learning Mode"})
 
+@app.route('/move_to_home', methods=['POST'])
+def move_to_home():
+    arm_command_pub.publish("move_to_home")  # 發送指令
+    return jsonify({"message": "已切換至 Home Pose"})
 
+
+@app.route('/pick_object', methods=['POST'])
+def pick_object():
+    x = detected_target["x"]
+    y = detected_target["y"]
+
+    if x is None or y is None:
+        return jsonify({"message": "❌ 尚未偵測到目標物"}), 400
+
+    command = f"pick_at:{x:.3f},{y:.3f}"
+    arm_command_pub.publish(command)
+    return jsonify({"message": f"已送出抓取指令，位置 ({x:.2f}, {y:.2f})"})
+
+
+# --- 主程式入口點 ---
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)
+    t = threading.Thread(target=process_frames, daemon=True)  # 啟動背景影像處理
+    t.start()
+
+    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)  # 啟動 Flask Web Server
