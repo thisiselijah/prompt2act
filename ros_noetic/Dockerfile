@@ -30,6 +30,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     flask \
     numpy \
     opencv-contrib-python \
+
     py_trees==0.7.* \
     && rm -rf /root/.cache/pip
 
@@ -55,4 +56,6 @@ RUN chmod +x /ros_entrypoint.sh
 ENTRYPOINT ["/ros_entrypoint.sh"]
 
 # The default command to execute after the container starts (enter bash)
+
 CMD ["bash"]
+

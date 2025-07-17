@@ -26,7 +26,7 @@ docker cp [your-container-name]:/root/catkin_ws/src/. ./catkin_ws/src/
 7. Stop the container and restart it.  
 ```
 $ docker run -it --rm --name <container_name> -v ./catkin_ws/src:/root/catkin_ws/src ros-kinetic-dev
-$ docker run -it --rm --net=host --device=/dev/video0:/dev/video0 --name <container_name> -v ./catkin_ws/src:/root/catkin_ws/src ros-noetic-dev
+$ docker run -it --rm --name <container_name> --net=host --device=/dev/video0:/dev/video0 -v ./catkin_ws/src:/root/catkin_ws/src ros-noetic-dev
 ```
 <p style="color:red; font-weight: bold; font-size: 14pt;">
 以上步驟可能還會修改!
@@ -41,8 +41,12 @@ $ roslaunch <package_name> <launch_file> # launch all nodes
 $ rosrun # launch specific node
 ```
 
-
-
 ### References
 ---
-https://gitcode.com/gh_mirrors/ni/niryo_one_ros/?utm_source=artical_gitcode&index=bottom&type=card&webUrl
+- https://hackmd.io/@NCTU-auv/B1_ErlCn3
+- https://github.com/splintered-reality/py_trees/tree/release/0.7.x
+- https://github.com/splintered-reality/py_trees_ros/tree/release/0.6.x
+- https://github.com/splintered-reality/rqt_py_trees/tree/release/0.4.x
+- https://github.com/splintered-reality/py_trees_msgs/tree/release/0.3.x
+- https://gitcode.com/gh_mirrors/ni/niryo_one_ros/?utm_source=artical_gitcode&index=bottom&type=card&webUrl
+- https://gitcode.com/gh_mirrors/ni/niryo_one_ros/?utm_source=artical_gitcode&index=bottom&type=card&webUrl
