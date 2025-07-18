@@ -30,11 +30,13 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     flask \
     numpy \
     opencv-contrib-python \
-
     py_trees==0.7.* \
+    openai>=1.0.0 \
+    requests>=2.25.0 \
+    typing_extensions>=4.0.0 \
+    google-genai>=0.2.0 \
     && rm -rf /root/.cache/pip
-
-# 🆕 STEP 4.1: 複製你修改後的 pyniryo 原始碼進去
+# Copy the pyniryo package into the appropriate directory.
 COPY pyniryo /usr/local/lib/python3.8/dist-packages/pyniryo
 
 # STEP 5: Catkin Workspace & Source Dependencies
