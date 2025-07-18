@@ -196,7 +196,7 @@ if __name__ == '__main__':
     rospy.loginfo("Connected to Niryo One successfully!")
     
     # 檢查並校準機器人
-    if not niryo.is_calibrated():
+    if not niryo.need_calibration():
         rospy.loginfo("Niryo One is not calibrated, starting calibration...")
         niryo.calibrate_auto()
     rospy.loginfo("Calibration completed!")
