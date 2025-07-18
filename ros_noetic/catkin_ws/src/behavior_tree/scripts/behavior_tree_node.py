@@ -16,19 +16,23 @@ class DetectObjects(py_trees.behaviour.Behaviour):
         self.logger.info("Foo1 is running")
         return py_trees.common.Status.SUCCESS
 
-# Define root class
-def create_root():
-    """
-    Create the root of the behavior tree
-    """
-    # Create the root behavior (a sequence that runs behaviors in order)
-    root = py_trees.composites.Sequence("BehaviorTreeRoot", memory=False)
-    
-    # Add behaviors to the sequence
-    detect_objects = DetectObjects("DetectObjects")
-    root.add_child(detect_objects)
-    
-    return root
+class PickUp(py_trees.behaviour.Behaviour):
+    def __init__(self, name):
+        super(PickUp, self).__init__(name)
+        self.logger = py_trees.logging.Logger(name)
+
+    def update(self):
+        self.logger.info("Foo2 is running")
+        return py_trees.common.Status.SUCCESS
+
+class PlaceDown(py_trees.behaviour.Behaviour):
+    def __init__(self, name):
+        super(PlaceDown, self).__init__(name)
+        self.logger = py_trees.logging.Logger(name)
+
+    def update(self):
+        self.logger.info("Foo3 is running")
+        return py_trees.common.Status.SUCCESS
 
 # --- Service section ---
 
@@ -103,11 +107,9 @@ def assemble_tree_from_json(config):
                 root.add_child(child)
                 
     else:
-        # Default to a single behavior or fallback to create_root()
-        root = create_behavior_from_config(config)
-        if not root:
-            rospy.logwarn("Unknown configuration, using default root")
-            root = create_root()
+        # Default return null if no valid type is found
+        rospy.logwarn(f"Unknown root behavior type: {config.get('type')}")
+        return None
     
     return root
 
