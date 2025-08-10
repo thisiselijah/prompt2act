@@ -17,24 +17,59 @@ RUN apt-get update && apt-get install -y \
     terminator \
     iputils-ping \
     net-tools \
+    curl \
+    build-essential \
+    libssl-dev \
+    zlib1g-dev \
+    libbz2-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    wget \
+    llvm \
+    libncurses5-dev \
+    libncursesw5-dev \
+    xz-utils \
+    tk-dev \
+    libffi-dev \
+    liblzma-dev \
+    python3-openssl \
     && rosdep update \
     && rm -rf /var/lib/apt/lists/*
+
+# STEP 3.5: Install pyenv for Python version management
+RUN curl https://pyenv.run | bash
+ENV PATH="/root/.pyenv/bin:$PATH"
+RUN echo 'export PATH="/root/.pyenv/bin:$PATH"' >> /root/.bashrc && \
+    echo 'eval "$(pyenv init -)"' >> /root/.bashrc && \
+    echo 'eval "$(pyenv virtualenv-init -)"' >> /root/.bashrc
+
+# Install Python 3.9 using pyenv
+RUN /bin/bash -c "source /root/.bashrc && pyenv install 3.9.19 && pyenv global 3.9.19"
 
 RUN echo 'set -g mouse on' >> /root/.tmux.conf
 
 # STEP 4: Python Dependencies
 # Install all Python packages in a single layer.
-RUN python3 -m pip install --no-cache-dir --upgrade pip && \
-    python3 -m pip install --no-cache-dir --ignore-installed \
+# Use pyenv's Python 3.9 for packages that require it, system Python 3.8 for ROS packages
+RUN /bin/bash -c "source /root/.bashrc && eval \"\$(pyenv init -)\" && \
+    python -m pip install --no-cache-dir --upgrade pip && \
+    python -m pip install --no-cache-dir --ignore-installed \
     ultralytics \
     flask \
     numpy \
     opencv-contrib-python \
-    py_trees==0.7.* \
     openai>=1.0.0 \
     requests>=2.25.0 \
     typing_extensions>=4.0.0 \
-    google-genai>=0.2.0 \
+    google-genai \
+    && rm -rf /root/.cache/pip"
+
+# Also install basic packages for system Python (for ROS compatibility)
+RUN python3 -m pip install --no-cache-dir --upgrade pip && \
+    python3 -m pip install --no-cache-dir \
+    numpy \
+    requests \
+    py_trees==0.7.* \
     && rm -rf /root/.cache/pip
 # Copy the pyniryo package into the appropriate directory.
 COPY pyniryo /usr/local/lib/python3.8/dist-packages/pyniryo
@@ -51,10 +86,23 @@ RUN mkdir -p /root/catkin_ws/src && \
 WORKDIR /root/catkin_ws
 RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin_make"
 
+# STEP 6.5: Setup Python environment aliases and scripts
+RUN echo 'alias python39="/root/.pyenv/versions/3.9.19/bin/python"' >> /root/.bashrc && \
+    echo 'alias pip39="/root/.pyenv/versions/3.9.19/bin/pip"' >> /root/.bashrc && \
+    echo 'export PYTHON39_PATH="/root/.pyenv/versions/3.9.19/bin/python"' >> /root/.bashrc
+
+# Create a script to easily switch between Python versions
+RUN echo '#!/bin/bash' > /usr/local/bin/use-python39 && \
+    echo 'export PATH="/root/.pyenv/versions/3.9.19/bin:$PATH"' >> /usr/local/bin/use-python39 && \
+    echo 'exec "$@"' >> /usr/local/bin/use-python39 && \
+    chmod +x /usr/local/bin/use-python39
+
 # STEP 7: Entrypoint
-# Copy the entrypoint script into the container and make it executable.
+# Copy the entrypoint script and helper scripts into the container and make them executable.
 COPY ros_entrypoint.sh /
-RUN chmod +x /ros_entrypoint.sh
+COPY python_version_helper.py /usr/local/bin/
+RUN chmod +x /ros_entrypoint.sh && \
+    chmod +x /usr/local/bin/python_version_helper.py
 ENTRYPOINT ["/ros_entrypoint.sh"]
 
 # The default command to execute after the container starts (enter bash)
