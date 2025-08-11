@@ -11,14 +11,6 @@
         <param name="max_tokens" value="1000" />
         <param name="temperature" value="0.7" />
         
-        <!-- Ollama Configuration -->
-        <param name="ollama_url" value="http://localhost:11434" />
-        <param name="ollama_model" value="llama2" />
-        
-        <!-- Hugging Face Configuration -->
-        <param name="huggingface_api_key" value="$(optenv HUGGINGFACE_API_KEY)" />
-        <param name="huggingface_model" value="microsoft/DialoGPT-medium" />
-        
         <!-- Google Gemini Configuration -->
         <param name="gemini_api_key" value="$(optenv GEMINI_API_KEY)" />
         <param name="google_api_key" value="$(optenv GOOGLE_API_KEY)" />

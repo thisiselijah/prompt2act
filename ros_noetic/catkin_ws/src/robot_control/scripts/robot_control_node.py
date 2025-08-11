@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-
+#!/usr/bin/python3
 import rospy
 from std_msgs.msg import Bool, String
 from robot_control.srv import RobotCommand, RobotCommandResponse
@@ -182,18 +181,21 @@ def callback(msg):
 
     except Exception as e:
         rospy.logerr(f"❌ 執行動作時發生錯誤: {e}")
-
-
-# --- ROS Node 初始化 ---
-if __name__ == '__main__':
+        
+def main():
+    """
+    Main function to initialize the ROS node and services
+    """
     
-    # 建立與 Niryo One 的連線
-    rospy.loginfo("Creating connection to Niryo One...")
-    niryo = NiryoRobot("192.168.232.26")  # 請改成你的 Niryo IP
-    if not niryo.is_connected():
-        rospy.logerr("Could not connect to Niryo One. Please check the IP address and network connection.")
-        exit(1)
-    rospy.loginfo("Connected to Niryo One successfully!")
+    NIRYOROBOT_IP = "192.168.232.26"
+    
+    niryo = NiryoRobot() 
+    
+    try:
+        niryo.connect(NIRYOROBOT_IP) # Connect to the robot
+    except Exception as e:
+        rospy.logerr(f"Failed to connect to Niryo One at {NIRYOROBOT_IP}: {e}")
+        return
     
     # 檢查並校準機器人
     if not niryo.need_calibration():
@@ -201,6 +203,7 @@ if __name__ == '__main__':
         niryo.calibrate_auto()
     rospy.loginfo("Calibration completed!")
 
+    # 初始化 ROS 節點
     rospy.init_node('robot_control_node')
     
     # 創建服務
@@ -211,3 +214,10 @@ if __name__ == '__main__':
     rospy.Subscriber('/niryo_arm_command', String, callback)
     
     rospy.spin()
+
+
+
+# --- ROS Node 初始化 ---
+if __name__ == '__main__':
+    main()
+    

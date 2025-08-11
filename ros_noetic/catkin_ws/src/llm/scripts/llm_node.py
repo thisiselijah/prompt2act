@@ -90,7 +90,7 @@ class GeminiProvider(LLMProvider):
     
     def __init__(self):
         self.client = None
-        self.model_name = "gemini-2.0-flash"  # Latest recommended model
+        self.model_name = "gemini-2.5-flash"  # Latest recommended model
         self.config = None
 
     def initialize(self, config: Dict[str, Any]) -> bool:
@@ -206,125 +206,12 @@ class GeminiProvider(LLMProvider):
             return False
 
 
-# class OllamaProvider(LLMProvider):
-    """Local Ollama provider"""
-    
-    def __init__(self):
-        self.base_url = "http://localhost:11434"
-        self.model = "llama2"
-        
-    def initialize(self, config: Dict[str, Any]) -> bool:
-        try:
-            self.base_url = config.get('base_url', self.base_url)
-            self.model = config.get('model', self.model)
-            
-            # Test connection
-            response = requests.get(f"{self.base_url}/api/tags", timeout=5)
-            if response.status_code == 200:
-                rospy.loginfo(f"Ollama provider initialized with model: {self.model}")
-                return True
-            else:
-                rospy.logerr("Failed to connect to Ollama server")
-                return False
-        except Exception as e:
-            rospy.logerr(f"Failed to initialize Ollama provider: {e}")
-            return False
-    
-    def generate_response(self, prompt: str, **kwargs) -> str:
-        try:
-            data = {
-                "model": self.model,
-                "prompt": prompt,
-                "stream": False
-            }
-            
-            response = requests.post(
-                f"{self.base_url}/api/generate",
-                json=data,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                return response.json().get('response', '')
-            else:
-                return f"Error: HTTP {response.status_code}"
-        except Exception as e:
-            rospy.logerr(f"Ollama API error: {e}")
-            return f"Error: {str(e)}"
-    
-    def is_available(self) -> bool:
-        try:
-            response = requests.get(f"{self.base_url}/api/tags", timeout=5)
-            return response.status_code == 200
-        except:
-            return False
-
-# class HuggingFaceProvider(LLMProvider):
-    """Hugging Face API provider"""
-    
-    def __init__(self):
-        self.api_url = "https://api-inference.huggingface.co/models/"
-        self.model = "microsoft/DialoGPT-medium"
-        self.headers = {}
-        
-    def initialize(self, config: Dict[str, Any]) -> bool:
-        try:
-            api_key = config.get('api_key') or os.getenv('HUGGINGFACE_API_KEY')
-            if not api_key:
-                rospy.logerr("Hugging Face API key not found")
-                return False
-                
-            self.headers = {"Authorization": f"Bearer {api_key}"}
-            self.model = config.get('model', self.model)
-            
-            rospy.loginfo(f"Hugging Face provider initialized with model: {self.model}")
-            return True
-        except Exception as e:
-            rospy.logerr(f"Failed to initialize Hugging Face provider: {e}")
-            return False
-    
-    def generate_response(self, prompt: str, **kwargs) -> str:
-        try:
-            data = {"inputs": prompt}
-            response = requests.post(
-                f"{self.api_url}{self.model}",
-                headers=self.headers,
-                json=data,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                if isinstance(result, list) and len(result) > 0:
-                    return result[0].get('generated_text', '')
-                return str(result)
-            else:
-                return f"Error: HTTP {response.status_code}"
-        except Exception as e:
-            rospy.logerr(f"Hugging Face API error: {e}")
-            return f"Error: {str(e)}"
-    
-    def is_available(self) -> bool:
-        try:
-            response = requests.post(
-                f"{self.api_url}{self.model}",
-                headers=self.headers,
-                json={"inputs": "test"},
-                timeout=10
-            )
-            return response.status_code == 200
-        except:
-            return False
-
-
 class LLMNode:
     """Main LLM Node class"""
     
     def __init__(self):
         self.providers = {
             'openai': OpenAIProvider(),
-            # 'ollama': OllamaProvider(),
-            # 'huggingface': HuggingFaceProvider(),
             'gemini': GeminiProvider()
         }
         self.current_provider = None
@@ -351,16 +238,6 @@ class LLMNode:
                     'model': rospy.get_param('~openai_model', 'gpt-3.5-turbo'),
                     'max_tokens': rospy.get_param('~max_tokens', 1000),
                     'temperature': rospy.get_param('~temperature', 0.7)
-                }
-            elif provider_type == 'ollama':
-                self.config = {
-                    'base_url': rospy.get_param('~ollama_url', 'http://localhost:11434'),
-                    'model': rospy.get_param('~ollama_model', 'llama2')
-                }
-            elif provider_type == 'huggingface':
-                self.config = {
-                    'api_key': rospy.get_param('~huggingface_api_key', ''),
-                    'model': rospy.get_param('~huggingface_model', 'microsoft/DialoGPT-medium')
                 }
             elif provider_type == 'gemini':
                 self.config = {
