@@ -13,7 +13,6 @@
         
         <!-- Google Gemini Configuration -->
         <param name="gemini_api_key" value="$(optenv GEMINI_API_KEY)" />
-        <param name="google_api_key" value="$(optenv GOOGLE_API_KEY)" />
         <param name="gemini_model" value="gemini-2.0-flash" />
         <param name="max_output_tokens" value="1000" />
         <param name="top_p" value="0.95" />
