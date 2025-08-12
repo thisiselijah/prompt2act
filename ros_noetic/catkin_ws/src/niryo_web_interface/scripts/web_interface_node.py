@@ -1,4 +1,4 @@
-#!/root/.pyenv/versions/3.9.19/bin/python3
+#!/usr/bin/python3
 
 # --- 套件匯入區 ---
 import rospkg                     # 取得 ROS 套件目錄
