@@ -167,38 +167,38 @@ def main():
     rospy.loginfo("Behavior Tree Node started")
     
     # Start the behavior tree assembly service
-    # service0 = assemble_behavior_tree_service()
+    service0 = assemble_behavior_tree_service()
     service1 = hello_world_service()
     rospy.spin()
     
     # Initialize with default behavior tree
-    # global current_behavior_tree
-    # root = create_root()
-    # current_behavior_tree = py_trees.trees.BehaviourTree(root)
-    # current_behavior_tree.setup(timeout=15)
+    global current_behavior_tree
+    root = create_root()
+    current_behavior_tree = py_trees.trees.BehaviourTree(root)
+    current_behavior_tree.setup(timeout=15)
     
-    # # Set the update rate (10 Hz)
-    # rate = rospy.Rate(10)
+    # Set the update rate (10 Hz)
+    rate = rospy.Rate(10)
     
-    # try:
-    #     # Main execution loop
-    #     while not rospy.is_shutdown():
-    #         # Tick the current behavior tree if it exists
-    #         if current_behavior_tree:
-    #             current_behavior_tree.tick()
+    try:
+        # Main execution loop
+        while not rospy.is_shutdown():
+            # Tick the current behavior tree if it exists
+            if current_behavior_tree:
+                current_behavior_tree.tick()
                 
-    #             # Log the tree status
-    #             rospy.loginfo_throttle(1.0, f"Tree status: {current_behavior_tree.root.status}")
+                # Log the tree status
+                rospy.loginfo_throttle(1.0, f"Tree status: {current_behavior_tree.root.status}")
             
-    #         # Sleep to maintain the desired rate
-    #         rate.sleep()
+            # Sleep to maintain the desired rate
+            rate.sleep()
             
-    # except KeyboardInterrupt:
-    #     rospy.loginfo("Behavior Tree Node shutting down")
-    # finally:
-    #     # Clean shutdown
-    #     if current_behavior_tree:
-    #         current_behavior_tree.shutdown()
+    except KeyboardInterrupt:
+        rospy.loginfo("Behavior Tree Node shutting down")
+    finally:
+        # Clean shutdown
+        if current_behavior_tree:
+            current_behavior_tree.shutdown()
 
 if __name__ == '__main__':
     main()
