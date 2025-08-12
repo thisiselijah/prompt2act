@@ -159,6 +159,9 @@ include_directories(
 
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
+
+find_package(Python3 3.9 EXACT REQUIRED COMPONENTS Interpreter)
+
 catkin_install_python(PROGRAMS
   scripts/llm_node.py
   scripts/setup.py

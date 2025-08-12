@@ -54,6 +54,9 @@ RUN echo 'set -g mouse on' >> /root/.tmux.conf
 RUN /bin/bash -c "source /root/.bashrc && eval \"\$(pyenv init -)\" && \
     python -m pip install --no-cache-dir --upgrade pip && \
     python -m pip install --no-cache-dir --ignore-installed \
+    catkin_pkg \ 
+    empy \ 
+    rospkg \ 
     openai>=1.0.0 \
     requests>=2.25.0 \
     typing_extensions>=4.0.0 \
