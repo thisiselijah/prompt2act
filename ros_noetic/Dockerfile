@@ -54,9 +54,6 @@ RUN echo 'set -g mouse on' >> /root/.tmux.conf
 RUN /bin/bash -c "source /root/.bashrc && eval \"\$(pyenv init -)\" && \
     python -m pip install --no-cache-dir --upgrade pip && \
     python -m pip install --no-cache-dir --ignore-installed \
-    ultralytics \
-    flask \
-    numpy \
     opencv-contrib-python \
     openai>=1.0.0 \
     requests>=2.25.0 \
@@ -67,6 +64,8 @@ RUN /bin/bash -c "source /root/.bashrc && eval \"\$(pyenv init -)\" && \
 # Also install basic packages for system Python (for ROS compatibility)
 RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir \
+    ultralytics \
+    flask \
     numpy \
     requests \
     py_trees==0.7.* \

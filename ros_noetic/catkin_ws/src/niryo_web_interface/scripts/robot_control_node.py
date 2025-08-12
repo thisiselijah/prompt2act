@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/root/.pyenv/versions/3.9.19/bin/python3
 
 import rospy
 from std_msgs.msg import String

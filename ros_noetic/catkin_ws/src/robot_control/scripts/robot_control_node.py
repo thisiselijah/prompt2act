@@ -189,10 +189,10 @@ def main():
     
     NIRYOROBOT_IP = "192.168.232.26"
     
-    niryo = NiryoRobot(NIRYOROBOT_IP) 
+    niryo = ''
     
     try:
-        niryo.connect(NIRYOROBOT_IP) # Connect to the robot
+        niryo = NiryoRobot(NIRYOROBOT_IP)  # Connect to the robot
     except Exception as e:
         rospy.logerr(f"Failed to connect to Niryo One at {NIRYOROBOT_IP}: {e}")
         return
