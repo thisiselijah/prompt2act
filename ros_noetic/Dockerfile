@@ -54,7 +54,6 @@ RUN echo 'set -g mouse on' >> /root/.tmux.conf
 RUN /bin/bash -c "source /root/.bashrc && eval \"\$(pyenv init -)\" && \
     python -m pip install --no-cache-dir --upgrade pip && \
     python -m pip install --no-cache-dir --ignore-installed \
-    opencv-contrib-python \
     openai>=1.0.0 \
     requests>=2.25.0 \
     typing_extensions>=4.0.0 \
@@ -63,12 +62,13 @@ RUN /bin/bash -c "source /root/.bashrc && eval \"\$(pyenv init -)\" && \
 
 # Also install basic packages for system Python (for ROS compatibility)
 RUN python3 -m pip install --no-cache-dir --upgrade pip && \
-    python3 -m pip install --no-cache-dir \
+    python3 -m pip install --no-cache-dir --ignore-installed \
     ultralytics \
     flask \
     numpy \
     requests \
     py_trees==0.7.* \
+    opencv-contrib-python \
     && rm -rf /root/.cache/pip
 # Copy the pyniryo package into the appropriate directory.
 COPY pyniryo /usr/local/lib/python3.8/dist-packages/pyniryo
