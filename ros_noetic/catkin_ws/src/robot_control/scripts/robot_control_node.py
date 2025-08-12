@@ -6,7 +6,7 @@ from pyniryo import NiryoRobot
 from pyniryo import PoseObject
 
 # --- Service section ---
-def robot_control_service():
+def robot_control_service(niryo):
     """
     Create ROS service to control the robot
     """
@@ -134,7 +134,7 @@ def robot_control_service():
 
 
 # --- ROS 訂閱者回呼函式 ---
-def callback(msg):
+def callback(msg, niryo):
     command = msg.data
     rospy.loginfo(f"收到指令: {command}")
 
@@ -189,7 +189,7 @@ def main():
     
     NIRYOROBOT_IP = "192.168.232.26"
     
-    niryo = NiryoRobot() 
+    niryo = NiryoRobot(NIRYOROBOT_IP) 
     
     try:
         niryo.connect(NIRYOROBOT_IP) # Connect to the robot
@@ -207,11 +207,11 @@ def main():
     rospy.init_node('robot_control_node')
     
     # 創建服務
-    service = rospy.Service('/niryo_arm_command_service', RobotCommand, robot_control_service())
+    service = rospy.Service('/niryo_arm_command_service', RobotCommand, robot_control_service(niryo))
     rospy.loginfo("Robot control service started")
     
     # 保留訂閱者作為備用
-    rospy.Subscriber('/niryo_arm_command', String, callback)
+    rospy.Subscriber('/niryo_arm_command', String, callback(niryo))
     
     rospy.spin()
 
