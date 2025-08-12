@@ -1,0 +1,5 @@
+<launch>
+    <!-- 啟動 Flask + Camera + ArUco 節點 -->
+    <!-- 確保有可執行權限 chmod +x scripts/web_server.py -->
+    <node name="web_camera_node" pkg="niryo_web_interface" type="web_camera_node.py" output="screen"></node>
+</launch>

@@ -1,4 +1,5 @@
 <launch>
   <include file="$(find niryo_web_interface)/launch/robot_control.launch" />
-  <include file="$(find niryo_web_interface)/launch/web_interface.launch" />
+  <include file="$(find niryo_web_interface)/launch/web_camera_node.launch" />
+  <include file="$(find niryo_web_interface)/launch/yolo_detection_node.launch" />
 </launch>
