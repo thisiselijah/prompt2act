@@ -1,15 +1,32 @@
 <launch>
-    <node name="node1" pkg="package1" type="node1_executable" output="screen">
-        <param name="param1" value="value1"/>
+    <!-- Args to configure LLM provider and API keys via environment -->
+    <arg name="llm_provider" default="gemini" />
+    <arg name="openai_api_key" default="$(env OPENAI_API_KEY)" />
+    <arg name="gemini_api_key" default="$(env GEMINI_API_KEY)" />
+    <arg name="google_api_key" default="$(env GOOGLE_API_KEY)" />
+
+    <!-- LLM Node (Python 3.9 shebang in script ensures correct interpreter) -->
+    <node name="llm_node" pkg="llm" type="scripts/llm_node.py" output="screen" respawn="true">
+        <param name="provider" value="$(arg llm_provider)" />
+        <param name="openai_api_key" value="$(arg openai_api_key)" />
+        <param name="gemini_api_key" value="$(arg gemini_api_key)" />
+        <param name="google_api_key" value="$(arg google_api_key)" />
+        <param name="temperature" value="0.7" />
+        <param name="max_output_tokens" value="1000" />
+        <param name="top_p" value="0.95" />
+        <param name="top_k" value="40" />
     </node>
-    
-    <node name="node2" pkg="package2" type="node2_executable" output="screen">
-        <param name="param2" value="value2"/>
-    </node>
-    
-    <node name="node3" pkg="package3" type="node3_executable" output="screen">
-        <param name="param3" value="value3"/>
-    </node>
-    
-    <!-- Add more nodes as needed -->
+
+    <!-- Behavior Tree Node -->
+    <node name="behavior_tree_node" pkg="behavior_tree" type="scripts/behavior_tree_node.py" output="screen" respawn="true" />
+
+    <!-- Robot Control Node -->
+    <node name="robot_control_node" pkg="robot_control" type="scripts/robot_control_node.py" output="screen" respawn="false" />
+
+    <!-- Speech Recognition Node -->
+    <node name="speech_recognition_node" pkg="speech_recognition" type="script/speech_recognition_node.py" output="screen" respawn="true" />
+
+    <!-- Web Interface (Flask) -->
+    <node name="web_interface_node" pkg="niryo_web_interface" type="scripts/web_interface_node.py" output="screen" respawn="true" />
+
 </launch>

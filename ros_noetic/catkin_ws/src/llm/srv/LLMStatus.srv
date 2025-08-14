@@ -1,0 +1,6 @@
+# Empty request
+---
+bool success
+string provider_name
+bool is_available
+string status_message

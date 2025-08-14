@@ -1,0 +1,6 @@
+string task_description
+bool auto_assemble
+---
+bool success
+string behavior_tree_json
+string error_message

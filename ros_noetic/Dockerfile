@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y \
     libffi-dev \
     liblzma-dev \
     python3-openssl \
+    graphviz \
     && rosdep update \
     && rm -rf /var/lib/apt/lists/*
 
@@ -54,6 +55,9 @@ RUN echo 'set -g mouse on' >> /root/.tmux.conf
 RUN /bin/bash -c "source /root/.bashrc && eval \"\$(pyenv init -)\" && \
     python -m pip install --no-cache-dir --upgrade pip && \
     python -m pip install --no-cache-dir --ignore-installed \
+    catkin_pkg \ 
+    empy \ 
+    rospkg \ 
     openai>=1.0.0 \
     requests>=2.25.0 \
     typing_extensions>=4.0.0 \
@@ -69,6 +73,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     requests \
     py_trees==0.7.* \
     opencv-contrib-python \
+    pydot \
     && rm -rf /root/.cache/pip
 # Copy the pyniryo package into the appropriate directory.
 COPY pyniryo /usr/local/lib/python3.8/dist-packages/pyniryo
