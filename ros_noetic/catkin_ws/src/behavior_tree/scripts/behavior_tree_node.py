@@ -11,6 +11,7 @@ import time
 from std_srvs.srv import SetBool, SetBoolResponse
 from std_msgs.msg import String
 from behavior_tree.srv import helloworld, helloworldResponse, AssembleBehaviorTree, AssembleBehaviorTreeResponse
+from robot_control.srv import RobotCommand, RobotCommandRequest
 
 # ============================================================================
 # GLOBAL CONFIGURATION
@@ -29,31 +30,277 @@ except ImportError:
 
 # --- Define behaviors
 class DetectObjects(py_trees.behaviour.Behaviour):
+    """Behavior that subscribes to YOLO detection data and stores detected objects"""
+    
     def __init__(self, name):
         super(DetectObjects, self).__init__(name)
         self.logger = py_trees.logging.Logger(name)
+        self.detected_objects = []
+        self.subscriber = rospy.Subscriber('/yolo_detected_targets', String, self._detection_callback)
+        
+    def _detection_callback(self, msg):
+        """Callback to receive YOLO detection data"""
+        try:
+            self.detected_objects = json.loads(msg.data)
+            self.logger.info(f"Received {len(self.detected_objects)} detected objects")
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Failed to parse detection data: {e}")
+            self.detected_objects = []
 
     def update(self):
-        self.logger.info("Foo1 is running")
-        return py_trees.common.Status.SUCCESS
+        """Check if objects are detected"""
+        if self.detected_objects:
+            self.logger.info(f"Objects detected: {len(self.detected_objects)} items")
+            # Store detection data in blackboard for other behaviors to use
+            self.blackboard = self.attach_blackboard_client(name=self.name)
+            self.blackboard.detected_objects = self.detected_objects
+            return py_trees.common.Status.SUCCESS
+        else:
+            self.logger.info("No objects detected, continuing to search...")
+            return py_trees.common.Status.RUNNING
 
 class PickUp(py_trees.behaviour.Behaviour):
+    """Behavior to pick up objects using robot control service"""
+    
     def __init__(self, name):
         super(PickUp, self).__init__(name)
         self.logger = py_trees.logging.Logger(name)
+        self.robot_service = None
+        self.picked_object = None
+        
+    def setup(self, **kwargs):
+        """Setup the robot control service client"""
+        try:
+            rospy.wait_for_service('/arm_command', timeout=5.0)
+            self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+            self.logger.info("Robot control service connected")
+            return True
+        except rospy.ROSException as e:
+            self.logger.error(f"Failed to connect to robot service: {e}")
+            return False
 
     def update(self):
-        self.logger.info("Foo2 is running")
-        return py_trees.common.Status.SUCCESS
+        """Execute pick up behavior"""
+        if not self.robot_service:
+            self.logger.error("Robot service not available")
+            return py_trees.common.Status.FAILURE
+            
+        try:
+            # Get detected objects from blackboard
+            self.blackboard = self.attach_blackboard_client(name=self.name)
+            detected_objects = getattr(self.blackboard, 'detected_objects', [])
+            
+            if not detected_objects:
+                self.logger.warn("No objects available to pick up")
+                return py_trees.common.Status.FAILURE
+                
+            # Pick the first detected object
+            target_object = detected_objects[0]
+            x = target_object['x']
+            y = target_object['y'] 
+            roll = target_object['roll']
+            
+            # Send pick command to robot
+            command = f"pick_at:{x},{y},{roll}"
+            req = RobotCommandRequest()
+            req.command = command
+            
+            response = self.robot_service(req)
+            
+            if response.success:
+                self.logger.info(f"Successfully picked up object at ({x:.2f}, {y:.2f})")
+                # Store picked object info for place behavior
+                self.blackboard.picked_object = target_object
+                # Remove picked object from detected list
+                detected_objects.remove(target_object)
+                self.blackboard.detected_objects = detected_objects
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.logger.error(f"Pick up failed: {response.message}")
+                return py_trees.common.Status.FAILURE
+                
+        except Exception as e:
+            self.logger.error(f"Error during pick up: {e}")
+            return py_trees.common.Status.FAILURE
 
 class PlaceDown(py_trees.behaviour.Behaviour):
-    def __init__(self, name):
+    """Behavior to place objects using robot control service"""
+    
+    def __init__(self, name, place_x=0.15, place_y=-0.15, place_z=0.18):
         super(PlaceDown, self).__init__(name)
         self.logger = py_trees.logging.Logger(name)
+        self.robot_service = None
+        self.place_x = place_x
+        self.place_y = place_y
+        self.place_z = place_z
+        
+    def setup(self, **kwargs):
+        """Setup the robot control service client"""
+        try:
+            rospy.wait_for_service('/arm_command', timeout=5.0)
+            self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+            self.logger.info("Robot control service connected")
+            return True
+        except rospy.ROSException as e:
+            self.logger.error(f"Failed to connect to robot service: {e}")
+            return False
 
     def update(self):
-        self.logger.info("Foo3 is running")
-        return py_trees.common.Status.SUCCESS
+        """Execute place down behavior"""
+        if not self.robot_service:
+            self.logger.error("Robot service not available")
+            return py_trees.common.Status.FAILURE
+            
+        try:
+            # Get picked object from blackboard
+            self.blackboard = self.attach_blackboard_client(name=self.name)
+            picked_object = getattr(self.blackboard, 'picked_object', None)
+            
+            if not picked_object:
+                self.logger.warn("No object available to place down")
+                return py_trees.common.Status.FAILURE
+                
+            # Use original object orientation for placing
+            roll = picked_object.get('roll', 0.0)
+            pitch = 1.438  # Default pitch for placing
+            yaw = -0.35    # Default yaw for placing
+            
+            # Send place command to robot
+            command = f"place_at:{self.place_x},{self.place_y},{self.place_z},{roll},{pitch},{yaw}"
+            req = RobotCommandRequest()
+            req.command = command
+            
+            response = self.robot_service(req)
+            
+            if response.success:
+                self.logger.info(f"Successfully placed object at ({self.place_x:.2f}, {self.place_y:.2f}, {self.place_z:.2f})")
+                # Clear picked object from blackboard
+                self.blackboard.picked_object = None
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.logger.error(f"Place down failed: {response.message}")
+                return py_trees.common.Status.FAILURE
+                
+        except Exception as e:
+            self.logger.error(f"Error during place down: {e}")
+            return py_trees.common.Status.FAILURE
+
+class OpenGripper(py_trees.behaviour.Behaviour):
+    """Behavior to open robot gripper"""
+    
+    def __init__(self, name):
+        super(OpenGripper, self).__init__(name)
+        self.logger = py_trees.logging.Logger(name)
+        self.robot_service = None
+        
+    def setup(self, **kwargs):
+        """Setup the robot control service client"""
+        try:
+            rospy.wait_for_service('/arm_command', timeout=5.0)
+            self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+            return True
+        except rospy.ROSException as e:
+            self.logger.error(f"Failed to connect to robot service: {e}")
+            return False
+
+    def update(self):
+        """Execute open gripper behavior"""
+        if not self.robot_service:
+            return py_trees.common.Status.FAILURE
+            
+        try:
+            req = RobotCommandRequest()
+            req.command = "open_gripper"
+            response = self.robot_service(req)
+            
+            if response.success:
+                self.logger.info("Gripper opened successfully")
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.logger.error(f"Failed to open gripper: {response.message}")
+                return py_trees.common.Status.FAILURE
+                
+        except Exception as e:
+            self.logger.error(f"Error opening gripper: {e}")
+            return py_trees.common.Status.FAILURE
+
+class CloseGripper(py_trees.behaviour.Behaviour):
+    """Behavior to close robot gripper"""
+    
+    def __init__(self, name):
+        super(CloseGripper, self).__init__(name)
+        self.logger = py_trees.logging.Logger(name)
+        self.robot_service = None
+        
+    def setup(self, **kwargs):
+        """Setup the robot control service client"""
+        try:
+            rospy.wait_for_service('/arm_command', timeout=5.0)
+            self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+            return True
+        except rospy.ROSException as e:
+            self.logger.error(f"Failed to connect to robot service: {e}")
+            return False
+
+    def update(self):
+        """Execute close gripper behavior"""
+        if not self.robot_service:
+            return py_trees.common.Status.FAILURE
+            
+        try:
+            req = RobotCommandRequest()
+            req.command = "close_gripper"
+            response = self.robot_service(req)
+            
+            if response.success:
+                self.logger.info("Gripper closed successfully")
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.logger.error(f"Failed to close gripper: {response.message}")
+                return py_trees.common.Status.FAILURE
+                
+        except Exception as e:
+            self.logger.error(f"Error closing gripper: {e}")
+            return py_trees.common.Status.FAILURE
+
+class MoveToHome(py_trees.behaviour.Behaviour):
+    """Behavior to move robot to home position"""
+    
+    def __init__(self, name):
+        super(MoveToHome, self).__init__(name)
+        self.logger = py_trees.logging.Logger(name)
+        self.robot_service = None
+        
+    def setup(self, **kwargs):
+        """Setup the robot control service client"""
+        try:
+            rospy.wait_for_service('/arm_command', timeout=5.0)
+            self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+            return True
+        except rospy.ROSException as e:
+            self.logger.error(f"Failed to connect to robot service: {e}")
+            return False
+
+    def update(self):
+        """Execute move to home behavior"""
+        if not self.robot_service:
+            return py_trees.common.Status.FAILURE
+            
+        try:
+            req = RobotCommandRequest()
+            req.command = "move_to_home_and_sleep"
+            response = self.robot_service(req)
+            
+            if response.success:
+                self.logger.info("Moved to home position successfully")
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.logger.error(f"Failed to move to home: {response.message}")
+                return py_trees.common.Status.FAILURE
+                
+        except Exception as e:
+            self.logger.error(f"Error moving to home: {e}")
+            return py_trees.common.Status.FAILURE
 
 # --- Visualization Functions ---
 class BehaviorTreeJSONPublisher:
@@ -334,7 +581,17 @@ def create_behavior_from_config(config):
     elif behavior_type == 'pick_up':
         return PickUp(behavior_name)
     elif behavior_type == 'place_down':
-        return PlaceDown(behavior_name)
+        # Allow custom place coordinates from config
+        place_x = config.get('place_x', 0.15)
+        place_y = config.get('place_y', -0.15) 
+        place_z = config.get('place_z', 0.18)
+        return PlaceDown(behavior_name, place_x, place_y, place_z)
+    elif behavior_type == 'open_gripper':
+        return OpenGripper(behavior_name)
+    elif behavior_type == 'close_gripper':
+        return CloseGripper(behavior_name)
+    elif behavior_type == 'move_to_home':
+        return MoveToHome(behavior_name)
     elif behavior_type == 'sequence':
         sequence = py_trees.composites.Sequence(behavior_name, memory=False)
         for child_config in config.get('children', []):
@@ -419,6 +676,35 @@ def main():
                     json_publisher.publish_tree_data(current_behavior_tree)
                     if ENABLE_DETAILED_LOGGING:
                         rospy.logdebug(f"Published JSON data for tick {tick_count}")
+                
+                # Check if behavior tree completed successfully
+                if status == py_trees.common.Status.SUCCESS:
+                    rospy.loginfo(f"🎉 Behavior tree completed successfully after {tick_count} ticks!")
+                    rospy.loginfo("Tree terminated. Waiting for next behavior tree task...")
+                    
+                    # Publish final status
+                    if json_publisher and JSON_SERIALIZATION_AVAILABLE:
+                        json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
+                    
+                    # Clean up current tree
+                    current_behavior_tree.shutdown()
+                    current_behavior_tree = None
+                    tick_count = 0
+                    rospy.loginfo("Behavior tree cleared. Ready for new task.")
+                    
+                elif status == py_trees.common.Status.FAILURE:
+                    rospy.logwarn(f"❌ Behavior tree failed after {tick_count} ticks!")
+                    rospy.loginfo("Tree terminated due to failure. Waiting for next behavior tree task...")
+                    
+                    # Publish final status
+                    if json_publisher and JSON_SERIALIZATION_AVAILABLE:
+                        json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
+                    
+                    # Clean up current tree
+                    current_behavior_tree.shutdown()
+                    current_behavior_tree = None
+                    tick_count = 0
+                    rospy.loginfo("Failed behavior tree cleared. Ready for new task.")
             
             # Sleep to maintain the desired rate
             rate.sleep()

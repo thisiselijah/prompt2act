@@ -128,21 +128,50 @@ rosrun behavior_tree test_json_publisher.py
   "name": "Node Name",
   "children": [
     {
-      "type": "detect_objects|pick_up|place_down|sequence|selector",
+      "type": "detect_objects|pick_up|place_down|open_gripper|close_gripper|move_to_home|sequence|selector",
       "name": "Child Node Name",
-      "children": [...]
+      "place_x": 0.15,  // Optional: X coordinate for place_down behavior
+      "place_y": -0.15, // Optional: Y coordinate for place_down behavior  
+      "place_z": 0.18,  // Optional: Z coordinate for place_down behavior
+      "children": [...]  // For composite types
     }
+  ]
+}
+```
+
+### Example: Complete Pick and Place Task
+
+```json
+{
+  "type": "sequence",
+  "name": "Pick and Place Task",
+  "children": [
+    {"type": "detect_objects", "name": "Detect Objects"},
+    {"type": "pick_up", "name": "Pick Up Object"},
+    {"type": "place_down", "name": "Place Object", "place_x": 0.15, "place_y": -0.15, "place_z": 0.18},
+    {"type": "move_to_home", "name": "Return Home"}
   ]
 }
 ```
 
 ## Available Behaviors
 
-- **DetectObjects**: Object detection behavior
-- **PickUp**: Object pickup behavior  
-- **PlaceDown**: Object placement behavior
+### Robot Control Behaviors
+- **DetectObjects**: Subscribe to YOLO detection data and store detected objects in blackboard
+- **PickUp**: Pick up objects using robot control service with coordinates from detection
+- **PlaceDown**: Place objects at specified coordinates (configurable x, y, z)
+- **OpenGripper**: Open robot gripper
+- **CloseGripper**: Close robot gripper  
+- **MoveToHome**: Move robot to home/sleep position
+
+### Composite Behaviors
 - **Sequence**: Execute children in order until one fails
 - **Selector**: Execute children until one succeeds
+
+### Behavior Tree Lifecycle
+- **Automatic Termination**: When root node reaches SUCCESS or FAILURE status, the tree automatically terminates and clears itself
+- **Task Queue Ready**: After termination, the system waits for the next behavior tree assembly request
+- **Blackboard Communication**: Behaviors share data (detected objects, picked objects) via py_trees blackboard
 
 ## Configuration
 
