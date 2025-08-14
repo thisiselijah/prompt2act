@@ -1,6 +1,4 @@
 #!/root/.pyenv/versions/3.9.19/bin/python3.9
-
-
 import os
 from abc import ABC, abstractmethod
 import requests
@@ -137,18 +135,15 @@ class GeminiProvider(LLMProvider):
 
     def generate_json_response(self, prompt: str, schema: Optional[Any] = None) -> str:
         try:
-            config = {
-                "response_mime_type": "application/json"
-            }
+            # For the current Google GenAI SDK, we need to use a simpler approach
+            # Add JSON instruction to the prompt instead of using generation_config
+            json_prompt = f"""{prompt}
+
+Please respond with valid JSON format only. Do not include any explanations or additional text."""
             
-            # Add schema if provided
-            if schema:
-                config["response_schema"] = schema
-                
             response = self.client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=prompt,
-                config=config
+                contents=json_prompt
             )
 
             # Handle response - for JSON, we want the text content

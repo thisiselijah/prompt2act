@@ -1,0 +1,6 @@
+string prompt
+string schema  # Optional JSON schema for validation
+---
+bool success
+string json_response
+string error_message

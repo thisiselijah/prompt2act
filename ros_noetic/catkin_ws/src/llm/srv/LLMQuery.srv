@@ -1,0 +1,5 @@
+string prompt
+---
+bool success
+string response
+string error_message

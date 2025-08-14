@@ -113,44 +113,94 @@ rostopic echo /llm_json_response
 
 ## ROS Services
 
+The LLM node provides custom service interfaces for structured communication:
+
+### Service Message Formats
+
+#### LLMQuery Service
+```
+# Request
+string prompt
+
+# Response
+bool success
+string response
+string error_message
+```
+
+#### LLMJsonQuery Service
+```
+# Request
+string prompt
+string schema  # Optional JSON schema for validation
+
+# Response
+bool success
+string json_response
+string error_message
+```
+
+#### GenerateBehaviorTree Service
+```
+# Request
+string task_description
+
+# Response
+bool success
+string behavior_tree_json
+string error_message
+```
+
+#### LLMStatus Service
+```
+# Request
+# (empty)
+
+# Response
+bool success
+string provider_name
+bool is_available
+string status_message
+```
+
 ### Available Services
 
 | Service | Service Type | Description |
 |---------|-------------|-------------|
-| `/llm_query` | `std_srvs/Trigger` | Direct text query |
-| `/llm_json_query` | `std_srvs/SetBool` | Direct JSON query |
-| `/generate_behavior_tree` | `std_srvs/SetBool` | Generate behavior tree JSON |
-| `/llm_status` | `std_srvs/Trigger` | Check LLM status |
+| `/llm_query` | `llm/LLMQuery` | Direct text query with prompt |
+| `/llm_json_query` | `llm/LLMJsonQuery` | JSON query with optional schema |
+| `/generate_behavior_tree` | `llm/GenerateBehaviorTree` | Generate behavior tree JSON |
+| `/llm_status` | `llm/LLMStatus` | Check LLM provider status |
 
 ### Service Usage Examples
 
 #### Text Query Service
 ```bash
-# Set query prompt parameter
-rosparam set /llm_node/query_prompt "What is artificial intelligence?"
-
-# Call the service
-rosservice call /llm_query
+# Direct text query with custom prompt
+rosservice call /llm_query "prompt: 'What is artificial intelligence?'"
 ```
 
 #### JSON Query Service
 ```bash
-# Direct JSON query
-rosservice call /llm_json_query "data: 'Create a JSON object with robot commands for navigation'"
+# Direct JSON query with prompt and optional schema
+rosservice call /llm_json_query "prompt: 'Create a JSON object with robot commands for navigation' schema: ''"
+
+# With JSON schema validation (for Gemini)
+rosservice call /llm_json_query "prompt: 'Generate robot configuration' schema: '{\"type\": \"object\", \"properties\": {\"joints\": {\"type\": \"array\"}}}'"
 ```
 
 #### Behavior Tree Generation
 ```bash
-# Generate behavior tree with custom task
-rosservice call /generate_behavior_tree "data: 'Pick up a red cube and place it on the blue table'"
+# Generate behavior tree with custom task description
+rosservice call /generate_behavior_tree "task_description: 'Pick up a red cube and place it on the blue table'"
 
-# Generate with default task
-rosservice call /generate_behavior_tree "data: ''"
+# Generate with default task (empty task_description uses default)
+rosservice call /generate_behavior_tree "task_description: ''"
 ```
 
 #### Status Check
 ```bash
-# Check if LLM provider is available
+# Check LLM provider status and availability
 rosservice call /llm_status
 ```
 
@@ -186,10 +236,13 @@ rostopic echo /llm_json_response
 # Terminal 1: Start the LLM node
 rosrun llm llm_node.py _provider:=gemini
 
-# Terminal 2: Generate behavior tree
-rosservice call /generate_behavior_tree "data: 'Robot should scan the environment, find a red object, pick it up, navigate to a designated drop zone, and place the object'"
+# Terminal 2: Generate behavior tree with specific task
+rosservice call /generate_behavior_tree "task_description: 'Robot should scan the environment, find a red object, pick it up, navigate to a designated drop zone, and place the object'"
 
-# Expected output: JSON behavior tree configuration
+# Expected response format:
+# success: True
+# behavior_tree_json: "{ ... JSON configuration ... }"
+# error_message: ""
 ```
 
 ### Example 4: Integration with Behavior Tree Node
@@ -198,11 +251,11 @@ rosservice call /generate_behavior_tree "data: 'Robot should scan the environmen
 # Terminal 1: Start all nodes
 roslaunch launcher all_nodes.launch
 
-# Terminal 2: Generate behavior tree JSON
-BT_JSON=$(rosservice call /generate_behavior_tree "data: 'Pick up a bottle and place it in recycling bin'" | grep -o '"message":.*' | cut -d'"' -f4)
+# Terminal 2: Generate and extract behavior tree JSON
+rosservice call /generate_behavior_tree "task_description: 'Pick up a bottle and place it in recycling bin'"
 
-# Terminal 3: Send generated JSON to behavior tree assembler
-rosservice call /assemble_behavior_tree "data: '$BT_JSON'"
+# Terminal 3: Use the response (example with command line JSON extraction)
+# The response will have structured fields: success, behavior_tree_json, error_message
 ```
 
 ## Behavior Tree Integration
@@ -265,7 +318,38 @@ rosservice call /llm_status
 rostopic list | grep llm
 ```
 
-#### 4. JSON Validation Errors
+#### 4. Service Call Errors
+```bash
+# Error: "No field name [data]" when calling /generate_behavior_tree
+# Solution: Use the correct field name 'task_description'
+# Wrong: rosservice call /generate_behavior_tree "data: ''"
+# Correct: rosservice call /generate_behavior_tree "task_description: ''"
+
+# Error: "Incompatible arguments to call service"
+# Solution: Check the service message format using:
+rosservice info /generate_behavior_tree
+```
+
+#### 5. JSON Schema Validation Errors
+```bash
+# Error: "GenerateContentRequest.generation_config.response_schema.properties..."
+# This indicates schema validation issues with Gemini API
+# The node automatically falls back to generation without schema validation
+
+# Error: "Invalid JSON generated: Expecting value: line 1 column 1 (char 0)"
+# This means the LLM returned empty or malformed JSON
+# Solutions:
+# 1. Check API key is valid
+rosservice call /llm_status
+
+# 2. Try with a simpler task description
+rosservice call /generate_behavior_tree "task_description: 'pick up object'"
+
+# 3. Try using OpenAI provider instead
+rosrun llm llm_node.py _provider:=openai
+```
+
+#### 6. Empty Response Issues
 ```bash
 # Error: "Invalid JSON generated"
 # This can happen with OpenAI provider. Try using Gemini for better JSON compliance
@@ -284,11 +368,17 @@ rosrun llm llm_node.py _provider:=gemini
 # Check topics
 rostopic list | grep llm
 
-# Check services
+# Check services and their message formats
 rosservice list | grep llm
+rosservice info /llm_query
+rosservice info /generate_behavior_tree
 
 # Test basic functionality
 rosservice call /llm_status
+
+# Test each service with correct syntax
+rosservice call /llm_query "prompt: 'Hello'"
+rosservice call /generate_behavior_tree "task_description: 'test task'"
 ```
 
 ### Log Levels
