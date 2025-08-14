@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+'''#!/usr/bin/python3
 
 # --- 套件匯入區 ---
 import rospkg                     # 取得 ROS 套件目錄
@@ -248,3 +248,4 @@ if __name__ == '__main__':
     t.start()
 
     app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)  # 啟動 Flask Web Server
+'''

@@ -9,20 +9,19 @@ from std_msgs.msg import String
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import threading
-import time
 import json
+
+from niryo_web_interface.srv import PickObject, PickObjectResponse  # 修改為你實際的 package 名稱
 
 # ========== ROS 初始化 ==========
 rospack = rospkg.RosPack()
-package_path = rospack.get_path('niryo_web_interface')   # 找到 ROS 專案目錄
+package_path = rospack.get_path('niryo_web_interface')
 
-rospy.init_node('web_camera_node', anonymous=True)  # 建立 ROS 節點
+rospy.init_node('web_camera_node', anonymous=True)
 bridge = CvBridge()
 
 # ========== ROS Publisher ==========
-# 發佈給機械臂的控制指令
 arm_command_pub = rospy.Publisher('/niryo_arm_command', String, queue_size=10)
-# 發佈影像給 YOLO 偵測節點
 image_pub = rospy.Publisher('/web_camera/image_raw', Image, queue_size=1)
 
 # ========== Flask 初始化 ==========
@@ -41,35 +40,31 @@ if not camera.isOpened():
 if not camera.isOpened():
     rospy.logerr("❌ 攝影機開啟失敗")
     exit()
-
 rospy.loginfo("✅ 攝影機開啟成功")
 
-# ========== ArUco 標記設定 ==========
-'''
+# ========== ArUco 設定 ==========
 aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 aruco_params = cv2.aruco.DetectorParameters()
-
 TABLE_WIDTH_CM = 23
 TABLE_HEIGHT_CM = 30
-'''
 
 # ========== YOLO 偵測結果 ==========
-detected_target = {"x": None, "y": None, "roll": None, "label": None}
+detected_objects = []  # 當前偵測到的物件
 
 def yolo_result_callback(msg):
-    global detected_target
+    global detected_objects
     try:
-        detected_target = json.loads(msg.data)
+        data = json.loads(msg.data)
+        # 保證 detected_objects 永遠是最新的
+        detected_objects = data if data else []
     except Exception as e:
         rospy.logerr(f"解析 YOLO 偵測結果失敗: {e}")
 
-rospy.Subscriber('/yolo_detected_target', String, yolo_result_callback)
+rospy.Subscriber('/yolo_detected_targets', String, yolo_result_callback)
 
-# ========== 影像共用變數 ==========
+# ========== 背景影像處理 ==========
 output_frame = None
-lock = threading.Lock()
 
-# ========== 背景影像處理執行緒 ==========
 def process_frames():
     global output_frame
     while not rospy.is_shutdown():
@@ -80,30 +75,55 @@ def process_frames():
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         corners, ids, _ = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=aruco_params)
 
-        # 更新全域影像
-        with lock:
-            output_frame = frame.copy()
+        
 
-        # 轉 ROS Image 並發佈
+        # 畫出 YOLO 偵測框（使用最新 detected_objects）
+        for obj in detected_objects:
+            pts = np.array(obj["pts"], dtype=int).reshape((-1, 1, 2))
+            label = obj["label"]
+            cx, cy = int(obj["cx"]), int(obj["cy"])
+
+            # 印出當前物件的中心座標
+            #print(f"偵測到物件: {label}, cx: {cx}, cy: {cy}")
+
+            color = (255, 0, 0) if label == "blue_block" else (0, 0, 255)
+            cv2.polylines(frame, [pts], isClosed=True, color=color, thickness=2)
+            cv2.circle(frame, (cx, cy), 5, color, -1)
+            cv2.putText(frame, label, (cx, cy - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+        # 更新全域影像
+        output_frame = frame.copy()
+
+        # 發佈 ROS Image
         try:
             ros_image = bridge.cv2_to_imgmsg(frame, encoding="bgr8")
             image_pub.publish(ros_image)
         except Exception as e:
             rospy.logerr(f"影像發佈失敗: {e}")
 
-        time.sleep(0.03)  # 約 30 FPS
-
 # ========== 視訊串流產生器 ==========
 def generate_frames():
     global output_frame
     while True:
-        with lock:
-            if output_frame is None:
-                continue
-            ret, buffer = cv2.imencode('.jpg', output_frame)
-            frame = buffer.tobytes()
-
+        if output_frame is None:
+            continue
+        ret, buffer = cv2.imencode('.jpg', output_frame)
+        frame = buffer.tobytes()
         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+# ========== ROS Service Callback ==========
+def pick_object_service_callback(req):
+    """
+    ROS Service 用來接收 x, y, roll, label 指令並送出抓取命令
+    """
+    command = f"pick_at:{req.x:.3f},{req.y:.3f},{req.roll:.3f}"
+    rospy.loginfo(f"收到 Service 請求：label={req.label}, x={req.x}, y={req.y}, roll={req.roll}")
+    arm_command_pub.publish(command)
+    return PickObjectResponse(message=f"✅ 已送出抓取指令：{req.label} → ({req.x:.2f}, {req.y:.2f}), roll = {req.roll:.3f}")
+
+# ========== 建立 Service ==========
+pick_object_service = rospy.Service('/pick_object_service', PickObject, pick_object_service_callback)
 
 # ========== Flask 路由 ==========
 @app.route('/')
@@ -136,12 +156,18 @@ def pick_object():
     data = request.get_json()
     target_label = data.get("label", "").lower()
 
-    x = detected_target.get("x")
-    y = detected_target.get("y")
-    roll = detected_target.get("roll")
-    label = detected_target.get("label")
+    x = None
+    y = None
+    roll = None
 
-    if x is None or y is None or roll is None or label != target_label:
+    for obj in detected_objects:
+        if obj["label"] == target_label:
+            x = obj.get("x")
+            y = obj.get("y")
+            roll = obj.get("roll")
+            break
+
+    if x is None or y is None or roll is None:
         return jsonify({"message": f"❌ 尚未偵測到 {target_label} 目標物"}), 400
 
     command = f"pick_at:{x:.3f},{y:.3f},{roll:.3f}"
