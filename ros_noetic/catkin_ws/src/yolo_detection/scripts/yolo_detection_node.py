@@ -13,7 +13,7 @@ from cv_bridge import CvBridge
 
 # --- ROS 初始化 ---
 rospack = rospkg.RosPack()
-package_path = rospack.get_path('niryo_web_interface')
+package_path = rospack.get_path('yolo_detection')
 model_path = os.path.join(package_path, 'model', 'best.pt')
 
 rospy.init_node('yolo_detection_node', anonymous=True)

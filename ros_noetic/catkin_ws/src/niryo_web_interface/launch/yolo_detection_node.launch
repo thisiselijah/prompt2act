@@ -1,4 +1,0 @@
-<launch>
-    <!-- 啟動 YOLO 偵測節點 -->
-    <node name="yyolo_detection_node" pkg="niryo_web_interface" type="yolo_detection_node.py" output="screen"></node>
-</launch>

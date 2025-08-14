@@ -1,0 +1,4 @@
+<launch>
+    <!-- 啟動 YOLO 偵測節點 -->
+    <node name="yolo_detection_node" pkg="yolo_detection" type="yolo_detection_node.py" output="screen"></node>
+</launch>
