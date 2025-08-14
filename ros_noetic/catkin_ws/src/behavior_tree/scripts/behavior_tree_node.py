@@ -91,7 +91,7 @@ class BehaviorTreeJSONPublisher:
         def serialize_node(node):
             """Recursively serialize a behavior tree node"""
             node_data = {
-                "id": node.id,
+                "id": str(node.id),
                 "name": node.name,
                 "type": type(node).__name__,
                 "children": []
@@ -139,7 +139,7 @@ class BehaviorTreeJSONPublisher:
                 status = str(node.status)
                 
             return {
-                "id": node.id,
+                "id": str(node.id),
                 "name": node.name,
                 "status": status,
                 "type": type(node).__name__
@@ -419,9 +419,6 @@ def main():
                     json_publisher.publish_tree_data(current_behavior_tree)
                     if ENABLE_DETAILED_LOGGING:
                         rospy.logdebug(f"Published JSON data for tick {tick_count}")
-            else:
-                # Log when no behavior tree is active
-                rospy.loginfo_throttle(5.0, "No behavior tree loaded. Waiting for tree assembly...")
             
             # Sleep to maintain the desired rate
             rate.sleep()
