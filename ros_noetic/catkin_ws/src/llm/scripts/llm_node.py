@@ -5,6 +5,8 @@ print(sys.executable)
 
 import rospy
 from std_msgs.msg import String
+from std_srvs.srv import SetBool, SetBoolRequest
+from behavior_tree.srv import AssembleBehaviorTree, AssembleBehaviorTreeRequest
 from llm.srv import LLMQuery, LLMQueryResponse, LLMJsonQuery, LLMJsonQueryResponse, GenerateBehaviorTree, GenerateBehaviorTreeResponse, LLMStatus, LLMStatusResponse
 import json
 import os
@@ -118,6 +120,44 @@ class LLMNode:
         self.json_query_service = rospy.Service('/llm_json_query', LLMJsonQuery, self.json_query_service_callback)
         self.behavior_tree_service = rospy.Service('/generate_behavior_tree', GenerateBehaviorTree, self.generate_behavior_tree_callback)
         self.status_service = rospy.Service('/llm_status', LLMStatus, self.status_service_callback)
+        
+        # Service client for behavior tree assembly
+        self.behavior_tree_assembly_client = None
+        self._initialize_behavior_tree_client()
+    
+    def _initialize_behavior_tree_client(self):
+        """Initialize the behavior tree assembly service client"""
+        try:
+            rospy.loginfo("Waiting for behavior tree assembly service...")
+            rospy.wait_for_service('/assemble_behavior_tree', timeout=5.0)
+            self.behavior_tree_assembly_client = rospy.ServiceProxy('/assemble_behavior_tree', AssembleBehaviorTree)
+            rospy.loginfo("Behavior tree assembly service client initialized")
+        except rospy.ROSException as e:
+            rospy.logwarn(f"Behavior tree assembly service not available: {e}")
+            self.behavior_tree_assembly_client = None
+    
+    def _call_behavior_tree_assembly(self, json_string):
+        """
+        Call the behavior tree assembly service with the generated JSON
+        Args:
+            json_string (str): JSON configuration for the behavior tree
+        Returns:
+            tuple: (success, message)
+        """
+        if not self.behavior_tree_assembly_client:
+            # Try to reinitialize the client
+            self._initialize_behavior_tree_client()
+            if not self.behavior_tree_assembly_client:
+                return False, "Behavior tree assembly service not available"
+        
+        try:
+            request = AssembleBehaviorTreeRequest()
+            request.behavior_tree_json = json_string
+            response = self.behavior_tree_assembly_client(request)
+            return response.success, response.message
+        except rospy.ServiceException as e:
+            rospy.logerr(f"Failed to call behavior tree assembly service: {e}")
+            return False, f"Service call failed: {str(e)}"
     
     def initialize_provider(self, provider_type: str) -> bool:
         """Initialize the specified LLM provider"""
@@ -241,6 +281,15 @@ class LLMNode:
             # Get task description from request or use default
             task_description = req.task_description if req.task_description else DEFAULT_TASK_DESCRIPTION
             
+            # Handle auto_assemble parameter with proper error handling
+            try:
+                auto_assemble = req.auto_assemble if hasattr(req, 'auto_assemble') else True  # Default to True for backward compatibility
+            except AttributeError:
+                rospy.logwarn("auto_assemble parameter not found in request, defaulting to True")
+                auto_assemble = True
+            
+            rospy.loginfo(f"Processing behavior tree generation request: task='{task_description}', auto_assemble={auto_assemble}")
+            
             # Format the prompt with the task description
             behavior_tree_prompt = BEHAVIOR_TREE_PROMPT_TEMPLATE.format(task_description=task_description)
             
@@ -278,11 +327,34 @@ class LLMNode:
                 if 'type' not in parsed_json or 'name' not in parsed_json:
                     rospy.logwarn("Generated JSON missing required fields (type/name)")
                 
-                return GenerateBehaviorTreeResponse(
-                    success=True, 
-                    behavior_tree_json=cleaned_response, 
-                    error_message=""
-                )
+                # Call the behavior tree assembly service if requested
+                if auto_assemble:
+                    assembly_success, assembly_message = self._call_behavior_tree_assembly(cleaned_response)
+                    
+                    if assembly_success:
+                        rospy.loginfo(f"Behavior tree assembled successfully: {assembly_message}")
+                        return GenerateBehaviorTreeResponse(
+                            success=True, 
+                            behavior_tree_json=cleaned_response, 
+                            error_message=""
+                        )
+                    else:
+                        rospy.logwarn(f"Behavior tree assembly failed: {assembly_message}")
+                        # Still return success for JSON generation, but include assembly warning
+                        return GenerateBehaviorTreeResponse(
+                            success=True, 
+                            behavior_tree_json=cleaned_response, 
+                            error_message=f"JSON generated but assembly failed: {assembly_message}"
+                        )
+                else:
+                    # Just return the generated JSON without assembling
+                    rospy.loginfo("Behavior tree JSON generated (auto-assembly disabled)")
+                    return GenerateBehaviorTreeResponse(
+                        success=True, 
+                        behavior_tree_json=cleaned_response, 
+                        error_message=""
+                    )
+                
             except json.JSONDecodeError as e:
                 rospy.logerr(f"Generated response is not valid JSON: {e}")
                 rospy.logerr(f"Original response: {response}")

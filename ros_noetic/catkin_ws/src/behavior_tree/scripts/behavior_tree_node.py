@@ -1,4 +1,8 @@
-#!/usr/bin/python3
+#!/usr/bin/python3.8
+
+import sys
+print(sys.executable) 
+
 import py_trees
 import rospy
 import json
@@ -6,15 +10,22 @@ import os
 import time
 from std_srvs.srv import SetBool, SetBoolResponse
 from std_msgs.msg import String
-from behavior_tree.srv import helloworld, helloworldResponse
+from behavior_tree.srv import helloworld, helloworldResponse, AssembleBehaviorTree, AssembleBehaviorTreeResponse
 
-# Import for visualization
+# ============================================================================
+# GLOBAL CONFIGURATION
+# ============================================================================
+TICK_FREQUENCY_HZ = 2.0  # Behavior tree execution frequency (Hz)
+ENABLE_DETAILED_LOGGING = False  # Enable detailed tick logging
+# ============================================================================
+
+# Import for behavior tree JSON serialization
 try:
-    import pydot
-    VISUALIZATION_AVAILABLE = True
+    # JSON serialization is built-in, no external dependencies needed
+    JSON_SERIALIZATION_AVAILABLE = True
 except ImportError:
-    rospy.logwarn("pydot not available. Visualization features will be disabled.")
-    VISUALIZATION_AVAILABLE = False
+    rospy.logwarn("JSON serialization not available")
+    JSON_SERIALIZATION_AVAILABLE = False
 
 # --- Define behaviors
 class DetectObjects(py_trees.behaviour.Behaviour):
@@ -45,170 +56,174 @@ class PlaceDown(py_trees.behaviour.Behaviour):
         return py_trees.common.Status.SUCCESS
 
 # --- Visualization Functions ---
-def generate_pydot_graph_with_status(root, snapshot_visitor=None):
-    """
-    Generate a pydot graph with behavior tree nodes colored by their status
-    Args:
-        root: Root node of the behavior tree
-        snapshot_visitor: py_trees SnapshotVisitor to get node statuses
-    Returns:
-        pydot.Dot: Graph object
-    """
-    if not VISUALIZATION_AVAILABLE:
-        rospy.logwarn("Visualization not available - pydot not installed")
-        return None
+class BehaviorTreeJSONPublisher:
+    """Class to handle behavior tree JSON serialization and ROS publishing"""
     
-    status_to_color = {
-        py_trees.common.Status.SUCCESS: "limegreen",
-        py_trees.common.Status.FAILURE: "red", 
-        py_trees.common.Status.RUNNING: "yellow",
-        py_trees.common.Status.INVALID: "lightgrey",
-    }
-
-    def get_node_attributes(node, snapshot_nodes=None):
-        # Default color
-        color = "lightgrey"
-        # If node is in snapshot, override with status color
-        if snapshot_nodes and node.id in snapshot_nodes:
-            color = status_to_color.get(snapshot_nodes[node.id], "lightgrey")
-        elif hasattr(node, 'status'):
-            color = status_to_color.get(node.status, "lightgrey")
-        
-        # Node shape based on type
-        if isinstance(node, py_trees.composites.Selector):
-            shape = "octagon"
-        elif isinstance(node, py_trees.composites.Sequence):
-            shape = "box"
-        elif isinstance(node, py_trees.composites.Parallel):
-            shape = "parallelogram"
-        else:  # Behaviour
-            shape = "ellipse"
-        
-        return (shape, color)
-
-    graph = pydot.Dot(graph_type='digraph')
-    graph.set_node_defaults(fontname='Arial', fontsize='11')
-
-    # Collect all nodes
-    nodes = {root.id: root}
-    for child in root.iterate():
-        nodes[child.id] = child
-
-    # Get snapshot data if available
-    snapshot_nodes = snapshot_visitor.nodes if snapshot_visitor else None
-
-    # Add nodes to graph
-    for node_id, node in nodes.items():
-        shape, color = get_node_attributes(node, snapshot_nodes)
-        pydot_node = pydot.Node(
-            name=str(node.id),  # Use unique ID as node name
-            label=node.name.replace('\n', ' '),
-            shape=shape,
-            style="filled",
-            fillcolor=color
-        )
-        graph.add_node(pydot_node)
-        
-        # Add edges to parent
-        if node.parent:
-            edge = pydot.Edge(str(node.parent.id), str(node.id))
-            graph.add_edge(edge)
-            
-    return graph
-
-def render_dot_tree_with_status(root, snapshot_visitor, filepath):
-    """
-    Render behavior tree to PNG file with status coloring
-    Args:
-        root: Root node of behavior tree
-        snapshot_visitor: SnapshotVisitor for status information
-        filepath: Output file path (without extension)
-    """
-    if not VISUALIZATION_AVAILABLE:
-        rospy.logwarn("Cannot render tree - pydot not available")
-        return False
-    
-    try:
-        graph = generate_pydot_graph_with_status(root, snapshot_visitor)
-        if graph:
-            png_filepath = f"{filepath}.png"
-            rospy.loginfo(f"Writing behavior tree visualization: {png_filepath}")
-            graph.write_png(png_filepath)
-            return True
-    except Exception as e:
-        rospy.logerr(f"Failed to render behavior tree: {str(e)}")
-    
-    return False
-
-class BehaviorTreeVisualizer:
-    """Class to handle behavior tree visualization and frame generation"""
-    
-    def __init__(self, output_dir="/frames"):
-        self.output_dir = output_dir
+    def __init__(self, output_topic="behavior_tree_status"):
+        self.output_topic = output_topic
         self.frame_counter = 0
         self.snapshot_visitor = py_trees.visitors.SnapshotVisitor()
         
-        # Create output directory if it doesn't exist
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
-            rospy.loginfo(f"Created visualization output directory: {self.output_dir}")
+        # Create ROS publisher for JSON data
+        self.publisher = rospy.Publisher(
+            self.output_topic, 
+            String, 
+            queue_size=10
+        )
+        
+        rospy.loginfo(f"BehaviorTreeJSONPublisher initialized on topic: {self.output_topic}")
     
     def get_snapshot_visitor(self):
         """Get the snapshot visitor for adding to behavior tree"""
         return self.snapshot_visitor
     
-    def visualize_tree(self, tree, filename_prefix="behavior_tree"):
+    def serialize_tree_structure(self, tree):
         """
-        Visualize the current behavior tree and save as PNG
+        Serialize the behavior tree structure to JSON
         Args:
             tree: py_trees.trees.BehaviourTree object
-            filename_prefix: prefix for the output filename
+        Returns:
+            dict: JSON-serializable tree structure
+        """
+        if not tree or not tree.root:
+            return None
+            
+        def serialize_node(node):
+            """Recursively serialize a behavior tree node"""
+            node_data = {
+                "id": node.id,
+                "name": node.name,
+                "type": type(node).__name__,
+                "children": []
+            }
+            
+            # Add type-specific information
+            if isinstance(node, py_trees.composites.Selector):
+                node_data["composite_type"] = "selector"
+            elif isinstance(node, py_trees.composites.Sequence):
+                node_data["composite_type"] = "sequence"
+            elif isinstance(node, py_trees.composites.Parallel):
+                node_data["composite_type"] = "parallel"
+            else:
+                node_data["composite_type"] = "behaviour"
+            
+            # Serialize children
+            for child in node.children:
+                child_data = serialize_node(child)
+                node_data["children"].append(child_data)
+                
+            return node_data
+        
+        return serialize_node(tree.root)
+    
+    def serialize_tree_status(self, tree):
+        """
+        Serialize the current behavior tree status to JSON
+        Args:
+            tree: py_trees.trees.BehaviourTree object
+        Returns:
+            dict: JSON-serializable tree status
+        """
+        if not tree or not tree.root:
+            return None
+            
+        # Get current status from snapshot visitor
+        snapshot_nodes = self.snapshot_visitor.nodes if self.snapshot_visitor else {}
+        
+        def extract_node_info(node):
+            """Extract status information for a node"""
+            status = "INVALID"
+            if node.id in snapshot_nodes:
+                status = str(snapshot_nodes[node.id])
+            elif hasattr(node, 'status'):
+                status = str(node.status)
+                
+            return {
+                "id": node.id,
+                "name": node.name,
+                "status": status,
+                "type": type(node).__name__
+            }
+        
+        # Collect all node statuses
+        node_statuses = []
+        node_statuses.append(extract_node_info(tree.root))
+        for node in tree.root.iterate():
+            node_statuses.append(extract_node_info(node))
+        
+        return {
+            "timestamp": time.time(),
+            "frame_count": self.frame_counter,
+            "tree_status": str(tree.root.status) if hasattr(tree.root, 'status') else "INVALID",
+            "nodes": node_statuses
+        }
+    
+    def publish_tree_data(self, tree, include_structure=False):
+        """
+        Publish behavior tree data as JSON via ROS topic
+        Args:
+            tree: py_trees.trees.BehaviourTree object
+            include_structure: Whether to include tree structure data
         Returns:
             bool: Success status
         """
-        if not VISUALIZATION_AVAILABLE:
-            return False
-        
         try:
-            if tree and tree.root:
-                filename = f"{filename_prefix}_frame_{self.frame_counter:04d}"
-                filepath = os.path.join(self.output_dir, filename)
-                
-                success = render_dot_tree_with_status(tree.root, self.snapshot_visitor, filepath)
-                if success:
-                    self.frame_counter += 1
-                    rospy.loginfo(f"Saved behavior tree frame {self.frame_counter}")
-                return success
-            else:
-                rospy.logwarn("No tree to visualize")
+            if not tree or not tree.root:
+                rospy.logwarn("No tree to publish")
                 return False
-                
+            
+            # Create JSON payload
+            json_data = {
+                "type": "behavior_tree_status",
+                "timestamp": time.time(),
+                "frame_count": self.frame_counter
+            }
+            
+            # Add structure if requested
+            if include_structure:
+                structure = self.serialize_tree_structure(tree)
+                if structure:
+                    json_data["structure"] = structure
+            
+            # Add current status
+            status = self.serialize_tree_status(tree)
+            if status:
+                json_data["status"] = status
+            
+            # Publish JSON message
+            json_string = json.dumps(json_data, indent=2)
+            msg = String()
+            msg.data = json_string
+            
+            self.publisher.publish(msg)
+            self.frame_counter += 1
+            
+            rospy.logdebug(f"Published behavior tree JSON data (frame {self.frame_counter})")
+            return True
+            
         except Exception as e:
-            rospy.logerr(f"Failed to visualize behavior tree: {str(e)}")
+            rospy.logerr(f"Failed to publish behavior tree JSON data: {str(e)}")
             return False
     
-    def create_tree_summary(self, tree, tree_config=None):
+    def publish_tree_summary(self, tree, tree_config=None):
         """
-        Create a summary visualization of the tree structure
+        Publish a complete tree summary with structure and status
         Args:
             tree: py_trees.trees.BehaviourTree object  
             tree_config: Original JSON configuration (optional)
         """
-        if not VISUALIZATION_AVAILABLE:
-            return False
-        
         try:
-            if tree and tree.root:
-                filename = f"tree_summary_{int(time.time())}"
-                filepath = os.path.join(self.output_dir, filename)
-                
-                success = render_dot_tree_with_status(tree.root, self.snapshot_visitor, filepath)
-                if success:
-                    rospy.loginfo(f"Created tree summary: {filepath}.png")
-                return success
+            if not tree or not tree.root:
+                return False
+            
+            success = self.publish_tree_data(tree, include_structure=True)
+            if success:
+                rospy.loginfo(f"Published complete tree summary (frame {self.frame_counter})")
+            return success
                 
         except Exception as e:
-            rospy.logerr(f"Failed to create tree summary: {str(e)}")
+            rospy.logerr(f"Failed to publish tree summary: {str(e)}")
+            return False
         
         return False
 
@@ -223,13 +238,13 @@ def assemble_behavior_tree_service():
         """
         Service callback to assemble behavior tree from JSON
         Args:
-            req: Service request containing JSON string in req.data
+            req: Service request containing JSON string in req.behavior_tree_json
         Returns:
-            SetBoolResponse: success status and message
+            AssembleBehaviorTreeResponse: success status and message
         """
         try:
             # Parse the JSON from the service request
-            tree_config = json.loads(req.data)
+            tree_config = json.loads(req.behavior_tree_json)
             rospy.loginfo(f"Received behavior tree configuration: {tree_config}")
             
             # Assemble the behavior tree based on JSON configuration
@@ -241,32 +256,32 @@ def assemble_behavior_tree_service():
             current_behavior_tree.setup(timeout=15)
             last_tree_config = tree_config
             
-            # Add snapshot visitor for visualization if available
-            if visualizer and VISUALIZATION_AVAILABLE:
+            # Add snapshot visitor for JSON publishing if available
+            if json_publisher and JSON_SERIALIZATION_AVAILABLE:
                 # Remove existing snapshot visitor if any
                 current_behavior_tree.visitors = [v for v in current_behavior_tree.visitors 
                                                 if not isinstance(v, py_trees.visitors.SnapshotVisitor)]
                 # Add our snapshot visitor
-                current_behavior_tree.visitors.append(visualizer.get_snapshot_visitor())
+                current_behavior_tree.visitors.append(json_publisher.get_snapshot_visitor())
                 
-                # Create initial tree summary
-                visualizer.create_tree_summary(current_behavior_tree, tree_config)
+                # Publish initial tree summary with structure
+                json_publisher.publish_tree_summary(current_behavior_tree, tree_config)
             
             rospy.loginfo("Behavior tree assembled successfully")
-            return SetBoolResponse(success=True, message="Behavior tree assembled successfully")
+            return AssembleBehaviorTreeResponse(success=True, message="Behavior tree assembled successfully")
             
         except json.JSONDecodeError as e:
             error_msg = f"Failed to parse JSON: {str(e)}"
             rospy.logerr(error_msg)
-            return SetBoolResponse(success=False, message=error_msg)
+            return AssembleBehaviorTreeResponse(success=False, message=error_msg)
             
         except Exception as e:
             error_msg = f"Failed to assemble behavior tree: {str(e)}"
             rospy.logerr(error_msg)
-            return SetBoolResponse(success=False, message=error_msg)
+            return AssembleBehaviorTreeResponse(success=False, message=error_msg)
     
     # Create the service
-    service = rospy.Service('assemble_behavior_tree', SetBool, handle_assemble_tree)
+    service = rospy.Service('assemble_behavior_tree', AssembleBehaviorTree, handle_assemble_tree)
     rospy.loginfo("Behavior tree assembly service started")
     return service
 
@@ -349,9 +364,9 @@ def hello_world_service():
     rospy.loginfo("Hello World service started")
     return service
 
-# Global variables to store current behavior tree and visualizer
+# Global variables to store current behavior tree and JSON publisher
 current_behavior_tree = None
-visualizer = None
+json_publisher = None
 last_tree_config = None 
 
 def main():
@@ -361,21 +376,26 @@ def main():
     # Initialize the ROS node
     rospy.init_node('behavior_tree_node', anonymous=True)
     rospy.loginfo("Behavior Tree Node started")
+    rospy.loginfo(f"Configuration: Tick frequency = {TICK_FREQUENCY_HZ} Hz")
     
-    # Initialize visualizer
-    global visualizer
-    if VISUALIZATION_AVAILABLE:
-        visualizer = BehaviorTreeVisualizer()
-        rospy.loginfo("Behavior tree visualizer initialized")
+    # Initialize JSON publisher
+    global json_publisher
+    if JSON_SERIALIZATION_AVAILABLE:
+        json_publisher = BehaviorTreeJSONPublisher("behavior_tree_status")
+        rospy.loginfo("Behavior tree JSON publisher initialized")
     else:
-        rospy.logwarn("Visualization disabled - pydot not available")
+        rospy.logwarn("JSON serialization disabled")
     
     # Start the behavior tree assembly service
     service0 = assemble_behavior_tree_service()
     service1 = hello_world_service()
     
-    # Set the update rate (10 Hz)
-    rate = rospy.Rate(10)
+    # Set the update rate using global frequency variable
+    rate = rospy.Rate(TICK_FREQUENCY_HZ)
+    rospy.loginfo(f"Behavior tree tick frequency set to {TICK_FREQUENCY_HZ} Hz")
+    
+    # Initialize tick counter
+    tick_count = 0
     
     try:
         # Main execution loop
@@ -383,21 +403,25 @@ def main():
             # Tick the current behavior tree if it exists
             global current_behavior_tree
             if current_behavior_tree:
+                # Perform the tick
                 current_behavior_tree.tick()
+                tick_count += 1
                 
-                # Log the tree status
-                rospy.loginfo_throttle(1.0, f"Tree status: {current_behavior_tree.root.status}")
+                # Log the tree status with tick information
+                status = current_behavior_tree.root.status
+                if ENABLE_DETAILED_LOGGING:
+                    rospy.loginfo(f"Tick {tick_count}: Tree status = {status}")
+                else:
+                    rospy.loginfo_throttle(2.0, f"Tick {tick_count}: Tree status = {status}")
                 
-                # Visualize tree every few ticks if visualizer is available
-                if visualizer and VISUALIZATION_AVAILABLE:
-                    # Visualize every 10 ticks (1 second at 10Hz)
-                    if hasattr(current_behavior_tree, '_tick_count'):
-                        current_behavior_tree._tick_count += 1
-                    else:
-                        current_behavior_tree._tick_count = 1
-                    
-                    if current_behavior_tree._tick_count % 10 == 0:
-                        visualizer.visualize_tree(current_behavior_tree)
+                # Publish JSON data after each tick if publisher is available
+                if json_publisher and JSON_SERIALIZATION_AVAILABLE:
+                    json_publisher.publish_tree_data(current_behavior_tree)
+                    if ENABLE_DETAILED_LOGGING:
+                        rospy.logdebug(f"Published JSON data for tick {tick_count}")
+            else:
+                # Log when no behavior tree is active
+                rospy.loginfo_throttle(5.0, "No behavior tree loaded. Waiting for tree assembly...")
             
             # Sleep to maintain the desired rate
             rate.sleep()
@@ -408,6 +432,7 @@ def main():
         # Clean shutdown
         if current_behavior_tree:
             current_behavior_tree.shutdown()
+        rospy.loginfo(f"Behavior tree node completed {tick_count} ticks")
 
 if __name__ == '__main__':
     main()

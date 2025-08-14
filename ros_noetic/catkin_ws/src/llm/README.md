@@ -144,6 +144,7 @@ string error_message
 ```
 # Request
 string task_description
+bool auto_assemble     # NEW: Automatically assemble the behavior tree after generation
 
 # Response
 bool success
@@ -191,11 +192,26 @@ rosservice call /llm_json_query "prompt: 'Generate robot configuration' schema: 
 
 #### Behavior Tree Generation
 ```bash
-# Generate behavior tree with custom task description
-rosservice call /generate_behavior_tree "task_description: 'Pick up a red cube and place it on the blue table'"
+# Method 1: Using proper YAML multiline format (RECOMMENDED)
+rosservice call /generate_behavior_tree "
+task_description: 'Pick up a red cube and place it on the blue table'
+auto_assemble: true
+"
 
-# Generate with default task (empty task_description uses default)
+# Method 2: Using inline YAML with proper structure
+rosservice call /generate_behavior_tree "{task_description: 'Sort objects by color', auto_assemble: false}"
+
+# Method 3: Using traditional ROS service call format
+rosservice call /generate_behavior_tree -- "task_description: 'Pick up object'" "auto_assemble: true"
+
+# Method 4: Generate with default task (auto_assemble defaults to true if omitted)
 rosservice call /generate_behavior_tree "task_description: ''"
+```
+
+**Important**: Avoid this syntax (causes YAML parsing error):
+```bash
+# ❌ WRONG - causes parsing error
+rosservice call /generate_behavior_tree "task_description: 'Pick up a red cube' auto_assemble: true"
 ```
 
 #### Status Check
@@ -230,37 +246,73 @@ rostopic pub /llm_json_prompt std_msgs/String "data: 'Create a JSON configuratio
 rostopic echo /llm_json_response
 ```
 
-### Example 3: Behavior Tree Generation for Robot Tasks
+### Example 3: Behavior Tree Generation and Auto-Assembly
 
 ```bash
 # Terminal 1: Start the LLM node
 rosrun llm llm_node.py _provider:=gemini
 
-# Terminal 2: Generate behavior tree with specific task
-rosservice call /generate_behavior_tree "task_description: 'Robot should scan the environment, find a red object, pick it up, navigate to a designated drop zone, and place the object'"
+# Terminal 2: Generate behavior tree with automatic assembly (proper YAML format)
+rosservice call /generate_behavior_tree "
+task_description: 'Robot should scan the environment, find a red object, pick it up, navigate to a designated drop zone, and place the object'
+auto_assemble: true
+"
 
 # Expected response format:
 # success: True
 # behavior_tree_json: "{ ... JSON configuration ... }"
-# error_message: ""
+# error_message: ""  (or warning message if assembly failed)
+
+# Terminal 3: Generate JSON only without assembly
+rosservice call /generate_behavior_tree "{task_description: 'Detect all objects in the scene and classify them by type', auto_assemble: false}"
 ```
 
-### Example 4: Integration with Behavior Tree Node
+### Example 4: Enhanced Behavior Tree Workflow with Auto-Assembly
 
 ```bash
-# Terminal 1: Start all nodes
-roslaunch launcher all_nodes.launch
+# Terminal 1: Start behavior tree node first
+rosrun behavior_tree behavior_tree_node.py
 
-# Terminal 2: Generate and extract behavior tree JSON
-rosservice call /generate_behavior_tree "task_description: 'Pick up a bottle and place it in recycling bin'"
+# Terminal 2: Start LLM node 
+rosrun llm llm_node.py _provider:=gemini
 
-# Terminal 3: Use the response (example with command line JSON extraction)
-# The response will have structured fields: success, behavior_tree_json, error_message
+# Terminal 3: Generate and automatically assemble behavior tree (proper format)
+rosservice call /generate_behavior_tree "
+task_description: 'Pick up a bottle and place it in recycling bin'
+auto_assemble: true
+"
+
+# The response will show:
+# - success: true if both JSON generation and assembly succeeded
+# - behavior_tree_json: the generated JSON configuration
+# - error_message: empty if successful, or warning if assembly failed but JSON succeeded
+
+# Terminal 4: Check behavior tree status
+rostopic echo /behavior_tree_status
+
+# Terminal 5: Generate JSON without assembly for manual review
+rosservice call /generate_behavior_tree "{task_description: 'Complex multi-step sorting task', auto_assemble: false}"
+# Then manually assemble if desired:
+# rosservice call /assemble_behavior_tree "behavior_tree_json: '{...json from previous response...}'"
 ```
 
 ## Behavior Tree Integration
 
-The LLM node can generate behavior trees compatible with the behavior tree node. The generated JSON follows this structure:
+The LLM node can generate behavior trees compatible with the behavior tree node and automatically assemble them when `auto_assemble` is enabled (default behavior).
+
+### Auto-Assembly Feature
+- **Enabled by default**: When `auto_assemble: true` (or omitted), the LLM node automatically calls `/assemble_behavior_tree` service after JSON generation
+- **Seamless workflow**: Single service call goes from task description to active behavior tree
+- **Robust error handling**: If assembly fails, JSON generation still succeeds with warning message
+- **Manual control**: Set `auto_assemble: false` to only generate JSON without assembly
+
+### Integration Flow
+1. **JSON Generation**: LLM generates behavior tree JSON based on task description
+2. **Auto-Assembly** (if enabled): Generated JSON is automatically sent to `/assemble_behavior_tree`
+3. **Visualization**: Assembled tree is automatically visualized in `/frames` directory
+4. **Execution**: Behavior tree begins executing immediately
+
+The generated JSON follows this structure:
 
 ```json
 {
@@ -320,14 +372,42 @@ rostopic list | grep llm
 
 #### 4. Service Call Errors
 ```bash
+# Error: expected <block end>, but found '<scalar>' - YAML parsing error
+# Problem: Incorrect service call syntax
+# Wrong: rosservice call /generate_behavior_tree "task_description: 'Pick up cube' auto_assemble: true"
+# 
+# Solutions (choose one):
+# Method 1 - Multiline YAML (RECOMMENDED):
+rosservice call /generate_behavior_tree "
+task_description: 'Pick up a red cube'
+auto_assemble: true
+"
+
+# Method 2 - JSON-style inline:
+rosservice call /generate_behavior_tree "{task_description: 'Pick up the red cube', auto_assemble: true}"
+
+# Method 3 - Traditional ROS format:
+rosservice call /generate_behavior_tree -- "task_description: 'Pick up cube'" "auto_assemble: true"
+
 # Error: "No field name [data]" when calling /generate_behavior_tree
-# Solution: Use the correct field name 'task_description'
+# Solution: Use the correct field names 'task_description' and 'auto_assemble'
 # Wrong: rosservice call /generate_behavior_tree "data: ''"
 # Correct: rosservice call /generate_behavior_tree "task_description: ''"
 
 # Error: "Incompatible arguments to call service"
 # Solution: Check the service message format using:
 rosservice info /generate_behavior_tree
+
+# Error: "JSON generated but assembly failed: Behavior tree assembly service not available"
+# Solution: Start the behavior tree node before the LLM node:
+rosrun behavior_tree behavior_tree_node.py
+# Then restart LLM node:
+rosrun llm llm_node.py _provider:=gemini
+
+# Note: The behavior tree assembly service now uses a custom service interface:
+# /assemble_behavior_tree (behavior_tree/AssembleBehaviorTree)
+# Request: string behavior_tree_json
+# Response: bool success, string message
 ```
 
 #### 5. JSON Schema Validation Errors
@@ -376,9 +456,13 @@ rosservice info /generate_behavior_tree
 # Test basic functionality
 rosservice call /llm_status
 
-# Test each service with correct syntax
+# Test each service with correct syntax (use proper YAML formatting)
 rosservice call /llm_query "prompt: 'Hello'"
-rosservice call /generate_behavior_tree "task_description: 'test task'"
+rosservice call /generate_behavior_tree "
+task_description: 'test task'
+auto_assemble: true
+"
+rosservice call /generate_behavior_tree "{task_description: 'test task', auto_assemble: false}"
 ```
 
 ### Log Levels
@@ -404,15 +488,118 @@ Your custom prompt template here...
 
 ### Integration with Other Nodes
 The LLM node is designed to work with:
-- Behavior Tree Node (for automated task planning)
-- Robot Control Node (for execution)
-- Speech Recognition Node (for voice commands)
+- **Behavior Tree Node** (for automated task planning and execution)
+- **Robot Control Node** (for physical execution)
+- **Speech Recognition Node** (for voice commands)
+
+### Enhanced Workflow
+1. **Task Input**: Natural language task description via service call
+2. **LLM Processing**: Gemini/OpenAI generates behavior tree JSON
+3. **Auto-Assembly**: JSON automatically assembled into executable behavior tree
+4. **Visualization**: Tree structure saved as PNG in `/frames` directory  
+5. **Execution**: Behavior tree runs immediately with real-time status updates
+
+### Service Dependencies
+- **Required**: `/assemble_behavior_tree` service (behavior_tree/AssembleBehaviorTree) from behavior_tree node for auto-assembly
+- **Optional**: Visualization services for enhanced debugging
+
+**Updated Service Interface**:
+```
+# /assemble_behavior_tree service
+string behavior_tree_json    # JSON configuration to assemble
+---
+bool success                 # Assembly success status
+string message              # Status message or error details
+```
 
 ### Performance Considerations
 - Gemini provider generally provides better JSON compliance
 - Response times vary based on prompt complexity
 - Consider caching for repeated queries
+- Auto-assembly adds minimal overhead (~100ms) for immediate execution
+
+## New Features
+
+### Auto-Assembly Integration (Latest Update)
+
+The LLM node now features seamless integration with the behavior tree assembly service:
+
+#### Key Benefits
+- **One-Step Workflow**: Single service call from task description to running behavior tree
+- **Automatic Error Recovery**: Graceful fallback if assembly service unavailable
+- **Flexible Control**: Optional `auto_assemble` parameter for manual control
+- **Enhanced Feedback**: Detailed status messages for both JSON generation and assembly
+
+#### Usage Patterns
+
+**Full Automation (Recommended)**:
+```bash
+rosservice call /generate_behavior_tree "
+task_description: 'your task here'
+auto_assemble: true
+"
+```
+
+**JSON Generation Only**:
+```bash
+rosservice call /generate_behavior_tree "{task_description: 'your task here', auto_assemble: false}"
+```
+
+**Backward Compatibility**:
+```bash
+# auto_assemble defaults to true if omitted
+rosservice call /generate_behavior_tree "task_description: 'your task here'"
+```
+
+#### Error Handling
+- **Assembly Unavailable**: Returns JSON with warning message, allows manual assembly later
+- **JSON Invalid**: Clear error messages with both original and cleaned responses
+- **Service Reconnection**: Automatic retry logic for assembly service connections
 
 ---
+
+## Testing
+
+### Automated Testing
+Use the included comprehensive test script:
+
+```bash
+# In the Docker container
+cd /root/catkin_ws
+source devel/setup.bash
+
+# Start behavior tree node first (required for auto-assembly tests)
+rosrun behavior_tree behavior_tree_node.py &
+
+# Start LLM node
+rosrun llm llm_node.py _provider:=gemini &
+
+# Run comprehensive tests
+rosrun llm test_behavior_tree_generation.py
+```
+
+The test script includes:
+- **Auto-assembly enabled tests**: Verifies end-to-end workflow
+- **JSON-only tests**: Validates generation without assembly
+- **Error handling tests**: Confirms graceful failure modes
+- **Multiple task types**: Tests various complexity levels
+
+### Manual Testing
+```bash
+# Test basic functionality
+rosservice call /llm_status
+
+# Test JSON generation only
+rosservice call /generate_behavior_tree "{task_description: 'pick up object', auto_assemble: false}"
+
+# Test full workflow  
+rosservice call /generate_behavior_tree "
+task_description: 'sort red and blue blocks'
+auto_assemble: true
+"
+
+# Check behavior tree status
+rostopic echo /behavior_tree_status
+```
 
 For more information or issues, please refer to the project documentation or create an issue in the repository.

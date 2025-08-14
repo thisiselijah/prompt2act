@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y \
     libffi-dev \
     liblzma-dev \
     python3-openssl \
+    graphviz \
     && rosdep update \
     && rm -rf /var/lib/apt/lists/*
 
@@ -72,6 +73,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     requests \
     py_trees==0.7.* \
     opencv-contrib-python \
+    pydot \
     && rm -rf /root/.cache/pip
 # Copy the pyniryo package into the appropriate directory.
 COPY pyniryo /usr/local/lib/python3.8/dist-packages/pyniryo
