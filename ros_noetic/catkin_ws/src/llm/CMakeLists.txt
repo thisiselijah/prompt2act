@@ -169,7 +169,6 @@ set(PYTHON_EXECUTABLE /root/.pyenv/versions/3.9.19/bin/python3.9)
 catkin_install_python(PROGRAMS
   scripts/llm_node.py
   scripts/setup.py
-  scripts/test_behavior_tree_generation.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
