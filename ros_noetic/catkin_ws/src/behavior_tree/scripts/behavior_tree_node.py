@@ -2,9 +2,19 @@
 import py_trees
 import rospy
 import json
+import os
+import time
 from std_srvs.srv import SetBool, SetBoolResponse
 from std_msgs.msg import String
 from behavior_tree.srv import helloworld, helloworldResponse
+
+# Import for visualization
+try:
+    import pydot
+    VISUALIZATION_AVAILABLE = True
+except ImportError:
+    rospy.logwarn("pydot not available. Visualization features will be disabled.")
+    VISUALIZATION_AVAILABLE = False
 
 # --- Define behaviors
 class DetectObjects(py_trees.behaviour.Behaviour):
@@ -34,6 +44,174 @@ class PlaceDown(py_trees.behaviour.Behaviour):
         self.logger.info("Foo3 is running")
         return py_trees.common.Status.SUCCESS
 
+# --- Visualization Functions ---
+def generate_pydot_graph_with_status(root, snapshot_visitor=None):
+    """
+    Generate a pydot graph with behavior tree nodes colored by their status
+    Args:
+        root: Root node of the behavior tree
+        snapshot_visitor: py_trees SnapshotVisitor to get node statuses
+    Returns:
+        pydot.Dot: Graph object
+    """
+    if not VISUALIZATION_AVAILABLE:
+        rospy.logwarn("Visualization not available - pydot not installed")
+        return None
+    
+    status_to_color = {
+        py_trees.common.Status.SUCCESS: "limegreen",
+        py_trees.common.Status.FAILURE: "red", 
+        py_trees.common.Status.RUNNING: "yellow",
+        py_trees.common.Status.INVALID: "lightgrey",
+    }
+
+    def get_node_attributes(node, snapshot_nodes=None):
+        # Default color
+        color = "lightgrey"
+        # If node is in snapshot, override with status color
+        if snapshot_nodes and node.id in snapshot_nodes:
+            color = status_to_color.get(snapshot_nodes[node.id], "lightgrey")
+        elif hasattr(node, 'status'):
+            color = status_to_color.get(node.status, "lightgrey")
+        
+        # Node shape based on type
+        if isinstance(node, py_trees.composites.Selector):
+            shape = "octagon"
+        elif isinstance(node, py_trees.composites.Sequence):
+            shape = "box"
+        elif isinstance(node, py_trees.composites.Parallel):
+            shape = "parallelogram"
+        else:  # Behaviour
+            shape = "ellipse"
+        
+        return (shape, color)
+
+    graph = pydot.Dot(graph_type='digraph')
+    graph.set_node_defaults(fontname='Arial', fontsize='11')
+
+    # Collect all nodes
+    nodes = {root.id: root}
+    for child in root.iterate():
+        nodes[child.id] = child
+
+    # Get snapshot data if available
+    snapshot_nodes = snapshot_visitor.nodes if snapshot_visitor else None
+
+    # Add nodes to graph
+    for node_id, node in nodes.items():
+        shape, color = get_node_attributes(node, snapshot_nodes)
+        pydot_node = pydot.Node(
+            name=str(node.id),  # Use unique ID as node name
+            label=node.name.replace('\n', ' '),
+            shape=shape,
+            style="filled",
+            fillcolor=color
+        )
+        graph.add_node(pydot_node)
+        
+        # Add edges to parent
+        if node.parent:
+            edge = pydot.Edge(str(node.parent.id), str(node.id))
+            graph.add_edge(edge)
+            
+    return graph
+
+def render_dot_tree_with_status(root, snapshot_visitor, filepath):
+    """
+    Render behavior tree to PNG file with status coloring
+    Args:
+        root: Root node of behavior tree
+        snapshot_visitor: SnapshotVisitor for status information
+        filepath: Output file path (without extension)
+    """
+    if not VISUALIZATION_AVAILABLE:
+        rospy.logwarn("Cannot render tree - pydot not available")
+        return False
+    
+    try:
+        graph = generate_pydot_graph_with_status(root, snapshot_visitor)
+        if graph:
+            png_filepath = f"{filepath}.png"
+            rospy.loginfo(f"Writing behavior tree visualization: {png_filepath}")
+            graph.write_png(png_filepath)
+            return True
+    except Exception as e:
+        rospy.logerr(f"Failed to render behavior tree: {str(e)}")
+    
+    return False
+
+class BehaviorTreeVisualizer:
+    """Class to handle behavior tree visualization and frame generation"""
+    
+    def __init__(self, output_dir="/frames"):
+        self.output_dir = output_dir
+        self.frame_counter = 0
+        self.snapshot_visitor = py_trees.visitors.SnapshotVisitor()
+        
+        # Create output directory if it doesn't exist
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+            rospy.loginfo(f"Created visualization output directory: {self.output_dir}")
+    
+    def get_snapshot_visitor(self):
+        """Get the snapshot visitor for adding to behavior tree"""
+        return self.snapshot_visitor
+    
+    def visualize_tree(self, tree, filename_prefix="behavior_tree"):
+        """
+        Visualize the current behavior tree and save as PNG
+        Args:
+            tree: py_trees.trees.BehaviourTree object
+            filename_prefix: prefix for the output filename
+        Returns:
+            bool: Success status
+        """
+        if not VISUALIZATION_AVAILABLE:
+            return False
+        
+        try:
+            if tree and tree.root:
+                filename = f"{filename_prefix}_frame_{self.frame_counter:04d}"
+                filepath = os.path.join(self.output_dir, filename)
+                
+                success = render_dot_tree_with_status(tree.root, self.snapshot_visitor, filepath)
+                if success:
+                    self.frame_counter += 1
+                    rospy.loginfo(f"Saved behavior tree frame {self.frame_counter}")
+                return success
+            else:
+                rospy.logwarn("No tree to visualize")
+                return False
+                
+        except Exception as e:
+            rospy.logerr(f"Failed to visualize behavior tree: {str(e)}")
+            return False
+    
+    def create_tree_summary(self, tree, tree_config=None):
+        """
+        Create a summary visualization of the tree structure
+        Args:
+            tree: py_trees.trees.BehaviourTree object  
+            tree_config: Original JSON configuration (optional)
+        """
+        if not VISUALIZATION_AVAILABLE:
+            return False
+        
+        try:
+            if tree and tree.root:
+                filename = f"tree_summary_{int(time.time())}"
+                filepath = os.path.join(self.output_dir, filename)
+                
+                success = render_dot_tree_with_status(tree.root, self.snapshot_visitor, filepath)
+                if success:
+                    rospy.loginfo(f"Created tree summary: {filepath}.png")
+                return success
+                
+        except Exception as e:
+            rospy.logerr(f"Failed to create tree summary: {str(e)}")
+        
+        return False
+
 # --- Service section ---
 
 # Define a server behavior factory service
@@ -57,10 +235,22 @@ def assemble_behavior_tree_service():
             # Assemble the behavior tree based on JSON configuration
             root = assemble_tree_from_json(tree_config)
             
-            # Store the assembled tree globally (you might want to use a class instead)
-            global current_behavior_tree
+            # Store the assembled tree globally
+            global current_behavior_tree, visualizer, last_tree_config
             current_behavior_tree = py_trees.trees.BehaviourTree(root)
             current_behavior_tree.setup(timeout=15)
+            last_tree_config = tree_config
+            
+            # Add snapshot visitor for visualization if available
+            if visualizer and VISUALIZATION_AVAILABLE:
+                # Remove existing snapshot visitor if any
+                current_behavior_tree.visitors = [v for v in current_behavior_tree.visitors 
+                                                if not isinstance(v, py_trees.visitors.SnapshotVisitor)]
+                # Add our snapshot visitor
+                current_behavior_tree.visitors.append(visualizer.get_snapshot_visitor())
+                
+                # Create initial tree summary
+                visualizer.create_tree_summary(current_behavior_tree, tree_config)
             
             rospy.loginfo("Behavior tree assembled successfully")
             return SetBoolResponse(success=True, message="Behavior tree assembled successfully")
@@ -126,6 +316,10 @@ def create_behavior_from_config(config):
     
     if behavior_type == 'detect_objects':
         return DetectObjects(behavior_name)
+    elif behavior_type == 'pick_up':
+        return PickUp(behavior_name)
+    elif behavior_type == 'place_down':
+        return PlaceDown(behavior_name)
     elif behavior_type == 'sequence':
         sequence = py_trees.composites.Sequence(behavior_name, memory=False)
         for child_config in config.get('children', []):
@@ -155,8 +349,10 @@ def hello_world_service():
     rospy.loginfo("Hello World service started")
     return service
 
-# Global variable to store current behavior tree
-current_behavior_tree = None 
+# Global variables to store current behavior tree and visualizer
+current_behavior_tree = None
+visualizer = None
+last_tree_config = None 
 
 def main():
     """
@@ -166,16 +362,17 @@ def main():
     rospy.init_node('behavior_tree_node', anonymous=True)
     rospy.loginfo("Behavior Tree Node started")
     
+    # Initialize visualizer
+    global visualizer
+    if VISUALIZATION_AVAILABLE:
+        visualizer = BehaviorTreeVisualizer()
+        rospy.loginfo("Behavior tree visualizer initialized")
+    else:
+        rospy.logwarn("Visualization disabled - pydot not available")
+    
     # Start the behavior tree assembly service
     service0 = assemble_behavior_tree_service()
     service1 = hello_world_service()
-    rospy.spin()
-    
-    # Initialize with default behavior tree
-    global current_behavior_tree
-    root = create_root()
-    current_behavior_tree = py_trees.trees.BehaviourTree(root)
-    current_behavior_tree.setup(timeout=15)
     
     # Set the update rate (10 Hz)
     rate = rospy.Rate(10)
@@ -184,11 +381,23 @@ def main():
         # Main execution loop
         while not rospy.is_shutdown():
             # Tick the current behavior tree if it exists
+            global current_behavior_tree
             if current_behavior_tree:
                 current_behavior_tree.tick()
                 
                 # Log the tree status
                 rospy.loginfo_throttle(1.0, f"Tree status: {current_behavior_tree.root.status}")
+                
+                # Visualize tree every few ticks if visualizer is available
+                if visualizer and VISUALIZATION_AVAILABLE:
+                    # Visualize every 10 ticks (1 second at 10Hz)
+                    if hasattr(current_behavior_tree, '_tick_count'):
+                        current_behavior_tree._tick_count += 1
+                    else:
+                        current_behavior_tree._tick_count = 1
+                    
+                    if current_behavior_tree._tick_count % 10 == 0:
+                        visualizer.visualize_tree(current_behavior_tree)
             
             # Sleep to maintain the desired rate
             rate.sleep()
