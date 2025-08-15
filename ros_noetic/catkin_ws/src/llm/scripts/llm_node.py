@@ -404,14 +404,27 @@ class LLMNode:
                 
             except json.JSONDecodeError as e:
                 rospy.logerr(f"Generated response is not valid JSON: {e}")
-                rospy.logerr(f"Original response: {response}")
-                rospy.logerr(f"Cleaned response: {cleaned_response}")
+                rospy.logerr(f"Original response length: {len(response)} chars")
+                rospy.logerr(f"Cleaned response length: {len(cleaned_response)} chars")
+                
+                # Log Unicode issues specifically
+                unicode_chars = [char for char in cleaned_response if ord(char) > 127]
+                if unicode_chars:
+                    rospy.logwarn(f"Unicode characters detected: {set(unicode_chars)}")
+                
+                # Show first 200 chars of each for debugging
+                rospy.logerr(f"Original response (first 200 chars): {response[:200]}")
+                rospy.logerr(f"Cleaned response (first 200 chars): {cleaned_response[:200]}")
                 
                 # Try one more time with aggressive cleaning
                 try:
+                    rospy.loginfo("Attempting aggressive JSON cleanup due to parsing failure")
                     fallback_cleaned = self._aggressive_json_cleanup(cleaned_response)
+                    rospy.loginfo(f"Aggressive cleanup result length: {len(fallback_cleaned)} chars")
+                    rospy.loginfo(f"Aggressive cleanup result (first 200 chars): {fallback_cleaned[:200]}")
+                    
                     parsed_json = json.loads(fallback_cleaned)
-                    rospy.loginfo(f"Successfully parsed JSON after aggressive cleanup: {fallback_cleaned}")
+                    rospy.loginfo(f"Successfully parsed JSON after aggressive cleanup")
                     
                     if auto_assemble:
                         assembly_success, assembly_message = self._call_behavior_tree_assembly(fallback_cleaned)
@@ -429,10 +442,18 @@ class LLMNode:
                         
                 except json.JSONDecodeError as fallback_error:
                     rospy.logerr(f"Fallback JSON parsing also failed: {fallback_error}")
+                    rospy.logerr(f"Fallback result (first 200 chars): {fallback_cleaned[:200] if 'fallback_cleaned' in locals() else 'N/A'}")
                     return GenerateBehaviorTreeResponse(
                         success=False, 
                         behavior_tree_json="", 
                         error_message=f"Invalid JSON generated: {str(e)}. Fallback also failed: {str(fallback_error)}"
+                    )
+                except Exception as cleanup_error:
+                    rospy.logerr(f"Aggressive cleanup threw exception: {cleanup_error}")
+                    return GenerateBehaviorTreeResponse(
+                        success=False, 
+                        behavior_tree_json="", 
+                        error_message=f"Invalid JSON generated: {str(e)}. Cleanup failed: {str(cleanup_error)}"
                     )
                 
         except Exception as e:
@@ -478,14 +499,39 @@ class LLMNode:
             import re
             import unicodedata
             
+            # Ensure we have a string and handle encoding issues early
+            if not isinstance(response, str):
+                response = str(response)
+            
+            # Handle potential encoding issues from Windows environments
+            try:
+                # Try to encode/decode to catch encoding issues early
+                response = response.encode('utf-8', errors='replace').decode('utf-8')
+            except Exception as e:
+                rospy.logwarn(f"Encoding normalization failed: {e}")
+                # Fallback to ASCII-safe conversion
+                response = response.encode('ascii', errors='ignore').decode('ascii')
+            
             # Normalize unicode characters for cross-platform compatibility
-            response = unicodedata.normalize('NFKC', response)
+            try:
+                response = unicodedata.normalize('NFKC', response)
+            except Exception as e:
+                rospy.logwarn(f"Unicode normalization failed: {e}")
             
             # Handle different line endings (Windows CRLF, Unix LF, Mac CR)
             response = response.replace('\r\n', '\n').replace('\r', '\n')
             
             # Remove zero-width characters that can cause parsing issues
             response = re.sub(r'[\u200b-\u200f\ufeff]', '', response)
+            
+            # Replace common problematic Unicode characters early
+            unicode_fixes = {
+                '\u201c': '"', '\u201d': '"',  # Smart quotes
+                '\u2018': "'", '\u2019': "'",  # Smart single quotes
+                '\u2013': '-', '\u2014': '-',  # Dashes
+            }
+            for bad_char, good_char in unicode_fixes.items():
+                response = response.replace(bad_char, good_char)
             
             # First, try to find JSON within code blocks with more flexible patterns
             # Handle various markdown code block formats
@@ -498,26 +544,34 @@ class LLMNode:
             ]
             
             for pattern in code_block_patterns:
-                json_blocks = re.findall(pattern, response, re.DOTALL | re.IGNORECASE)
-                if json_blocks:
-                    candidate = json_blocks[0].strip()
-                    if self._is_valid_json_structure(candidate):
-                        return candidate
+                try:
+                    json_blocks = re.findall(pattern, response, re.DOTALL | re.IGNORECASE)
+                    if json_blocks:
+                        candidate = json_blocks[0].strip()
+                        if self._is_valid_json_structure(candidate):
+                            return candidate
+                except Exception as e:
+                    rospy.logwarn(f"Code block pattern matching failed: {e}")
+                    continue
             
             # Look for JSON objects in the text with improved brace matching
             # Handle nested objects and arrays properly
             json_candidates = []
             
             # Find all potential JSON start positions
-            for match in re.finditer(r'\{', response):
-                start_idx = match.start()
-                json_str = self._extract_balanced_braces(response, start_idx)
-                if json_str and self._is_valid_json_structure(json_str):
-                    json_candidates.append(json_str)
-            
-            # Return the longest valid JSON (likely the most complete)
-            if json_candidates:
-                return max(json_candidates, key=len)
+            try:
+                for match in re.finditer(r'\{', response):
+                    start_idx = match.start()
+                    json_str = self._extract_balanced_braces(response, start_idx)
+                    if json_str and self._is_valid_json_structure(json_str):
+                        json_candidates.append(json_str)
+                
+                # Return the longest valid JSON (likely the most complete)
+                if json_candidates:
+                    return max(json_candidates, key=len)
+                    
+            except Exception as e:
+                rospy.logwarn(f"Brace matching failed: {e}")
             
             # Last resort: try to clean and return the original response
             cleaned_response = self._clean_response_text(response)
@@ -609,9 +663,43 @@ class LLMNode:
         """Sanitize JSON string for reliable parsing across platforms"""
         try:
             import re
+            import unicodedata
+            
+            # Ensure we're working with a proper string
+            if not isinstance(json_str, str):
+                json_str = str(json_str)
+            
+            # Normalize Unicode characters to prevent encoding issues
+            json_str = unicodedata.normalize('NFKC', json_str)
             
             # Remove byte order marks (BOM) that can appear on Windows
-            json_str = json_str.lstrip('\ufeff\ufffe')
+            json_str = json_str.lstrip('\ufeff\ufffe\ufbff')
+            
+            # Replace smart quotes and other problematic Unicode characters
+            unicode_replacements = {
+                '\u201c': '"',  # Left double quotation mark
+                '\u201d': '"',  # Right double quotation mark  
+                '\u2018': "'",  # Left single quotation mark
+                '\u2019': "'",  # Right single quotation mark
+                '\u2013': '-',  # En dash
+                '\u2014': '-',  # Em dash
+                '\u2026': '...',  # Horizontal ellipsis
+                '\u00a0': ' ',  # Non-breaking space
+                '\u2003': ' ',  # Em space
+                '\u2002': ' ',  # En space
+                '\u2009': ' ',  # Thin space
+                '\u200b': '',   # Zero-width space
+                '\u200c': '',   # Zero-width non-joiner
+                '\u200d': '',   # Zero-width joiner
+                '\ufeff': '',   # Zero-width no-break space (BOM)
+            }
+            
+            for unicode_char, replacement in unicode_replacements.items():
+                json_str = json_str.replace(unicode_char, replacement)
+            
+            # Remove any remaining non-ASCII characters that could cause issues
+            # but preserve basic JSON structure characters
+            json_str = ''.join(char if ord(char) < 128 or char in '{}[],:' else ' ' for char in json_str)
             
             # Fix common JSON formatting issues
             # Replace single quotes with double quotes (but not inside strings)
@@ -627,32 +715,90 @@ class LLMNode:
             # Remove any null bytes that might cause issues
             json_str = json_str.replace('\x00', '')
             
+            # Clean up excessive whitespace
+            json_str = re.sub(r'\s+', ' ', json_str)
+            
             return json_str.strip()
             
-        except Exception:
-            return json_str.strip() if json_str else ""
+        except Exception as e:
+            rospy.logwarn(f"JSON sanitization failed: {e}")
+            # Fallback: aggressive ASCII-only cleanup
+            try:
+                # Convert to ASCII, ignoring errors
+                ascii_str = json_str.encode('ascii', 'ignore').decode('ascii')
+                return ascii_str.strip() if ascii_str else "{}"
+            except Exception:
+                return json_str.strip() if json_str else "{}"
     
     def _aggressive_json_cleanup(self, json_str: str) -> str:
         """Aggressive JSON cleanup as last resort for cross-platform compatibility"""
         try:
             import re
+            import unicodedata
             
-            # Remove all non-printable characters except necessary whitespace
-            json_str = re.sub(r'[^\x20-\x7E\n\r\t]', '', json_str)
+            rospy.loginfo("Applying aggressive JSON cleanup for Unicode issues")
             
-            # Fix common issues with quotes
-            # Replace smart quotes with regular quotes
-            json_str = json_str.replace('"', '"').replace('"', '"')
-            json_str = json_str.replace(''', "'").replace(''', "'")
+            # Ensure we're working with a proper string
+            if not isinstance(json_str, str):
+                json_str = str(json_str)
+            
+            # First, try to normalize and convert problematic Unicode
+            try:
+                # Normalize Unicode to composed form
+                json_str = unicodedata.normalize('NFC', json_str)
+                
+                # More comprehensive Unicode character replacement
+                unicode_map = {
+                    # Quotation marks
+                    '\u201c': '"', '\u201d': '"',  # Smart double quotes
+                    '\u2018': "'", '\u2019': "'",  # Smart single quotes
+                    '\u00ab': '"', '\u00bb': '"',  # Guillemets
+                    '\u2039': "'", '\u203a': "'",  # Single guillemets
+                    
+                    # Dashes and hyphens
+                    '\u2013': '-', '\u2014': '-',  # En/Em dash
+                    '\u2212': '-',                 # Minus sign
+                    '\u00ad': '-',                 # Soft hyphen
+                    
+                    # Spaces
+                    '\u00a0': ' ',  # Non-breaking space
+                    '\u2000': ' ', '\u2001': ' ', '\u2002': ' ', '\u2003': ' ',
+                    '\u2004': ' ', '\u2005': ' ', '\u2006': ' ', '\u2007': ' ',
+                    '\u2008': ' ', '\u2009': ' ', '\u200a': ' ', '\u200b': '',
+                    '\u202f': ' ', '\u205f': ' ', '\u3000': ' ',
+                    
+                    # Other problematic characters
+                    '\u2026': '...',  # Ellipsis
+                    '\u2022': '*',    # Bullet
+                    '\u00b7': '*',    # Middle dot
+                    '\ufeff': '',     # BOM
+                    '\u200c': '',     # Zero-width non-joiner
+                    '\u200d': '',     # Zero-width joiner
+                }
+                
+                for unicode_char, replacement in unicode_map.items():
+                    json_str = json_str.replace(unicode_char, replacement)
+                    
+            except Exception as e:
+                rospy.logwarn(f"Unicode normalization failed: {e}")
+            
+            # Remove all non-printable and non-ASCII characters except essential JSON chars
+            # Keep: letters, digits, basic punctuation, and JSON structure characters
+            safe_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789{}[]":,.-_ \t\n\r')
+            json_str = ''.join(char if char in safe_chars else ' ' for char in json_str)
+            
+            # Fix common issues with quotes - more aggressive approach
+            # Replace any remaining problematic quotes
+            json_str = re.sub(r'[""''`]', '"', json_str)
             
             # Ensure all property names are quoted
             json_str = re.sub(r'(\w+)(\s*:\s*)', r'"\1"\2', json_str)
             
             # Fix boolean values to lowercase
-            json_str = re.sub(r'\bTrue\b', 'true', json_str)
-            json_str = re.sub(r'\bFalse\b', 'false', json_str)
-            json_str = re.sub(r'\bNull\b', 'null', json_str)
-            json_str = re.sub(r'\bNone\b', 'null', json_str)
+            json_str = re.sub(r'\bTrue\b', 'true', json_str, flags=re.IGNORECASE)
+            json_str = re.sub(r'\bFalse\b', 'false', json_str, flags=re.IGNORECASE)
+            json_str = re.sub(r'\bNull\b', 'null', json_str, flags=re.IGNORECASE)
+            json_str = re.sub(r'\bNone\b', 'null', json_str, flags=re.IGNORECASE)
             
             # Remove trailing commas more aggressively
             json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
@@ -660,13 +806,45 @@ class LLMNode:
             # Remove duplicate quotes
             json_str = re.sub(r'"{2,}', '"', json_str)
             
+            # Fix common malformed JSON patterns
+            json_str = re.sub(r'"\s*:\s*"([^"]*?)"\s*([,}])', r'": "\1"\2', json_str)  # Fix quoted values
+            json_str = re.sub(r':\s*([^",}\]]+)([,}])', r': "\1"\2', json_str)  # Quote unquoted values
+            
             # Ensure consistent spacing
             json_str = re.sub(r'\s+', ' ', json_str)
             
-            return json_str.strip()
+            # Final cleanup: ensure the JSON has proper structure
+            json_str = json_str.strip()
+            if not json_str.startswith('{'):
+                # Try to find the first { and start from there
+                start_idx = json_str.find('{')
+                if start_idx != -1:
+                    json_str = json_str[start_idx:]
             
-        except Exception:
-            return json_str.strip() if json_str else ""
+            if not json_str.endswith('}'):
+                # Try to find the last } and end there
+                end_idx = json_str.rfind('}')
+                if end_idx != -1:
+                    json_str = json_str[:end_idx + 1]
+            
+            rospy.loginfo(f"Aggressive cleanup completed. Result length: {len(json_str)}")
+            return json_str
+            
+        except Exception as e:
+            rospy.logerr(f"Aggressive cleanup failed: {e}")
+            # Ultimate fallback: return a minimal valid JSON structure
+            try:
+                # Convert to pure ASCII as last resort
+                ascii_str = json_str.encode('ascii', 'ignore').decode('ascii')
+                # Extract any JSON-like structure
+                import re
+                match = re.search(r'\{[^{}]*\}', ascii_str)
+                if match:
+                    return match.group(0)
+                else:
+                    return '{"type": "sequence", "name": "ErrorRecovery", "children": []}'
+            except Exception:
+                return '{"type": "sequence", "name": "FallbackTask", "children": []}'
 
 
 def main():
