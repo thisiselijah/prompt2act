@@ -61,13 +61,25 @@ class LLMProvider(ABC):
             if not isinstance(text, str):
                 text = str(text)
             
-            # Normalize Unicode characters
-            text = unicodedata.normalize('NFKC', text)
+            # First, handle the text as bytes if needed to catch encoding issues early
+            try:
+                # If we can't encode as UTF-8, we have encoding issues
+                text.encode('utf-8')
+            except UnicodeEncodeError:
+                # Convert problematic characters to safe equivalents immediately
+                text = text.encode('ascii', errors='ignore').decode('ascii')
+            
+            # Normalize Unicode characters (only if no encoding errors)
+            try:
+                text = unicodedata.normalize('NFKC', text)
+            except Exception:
+                # If normalization fails, skip it
+                pass
             
             # Replace problematic Unicode characters with safe equivalents
             unicode_replacements = {
                 '\u201c': '"',  # Left double quotation mark
-                '\u201d': '"',  # Right double quotation mark
+                '\u201d': '"',  # Right double quotation mark  
                 '\u2018': "'",  # Left single quotation mark
                 '\u2019': "'",  # Right single quotation mark
                 '\u2013': '-',  # En dash
@@ -75,6 +87,11 @@ class LLMProvider(ABC):
                 '\u2026': '...',  # Horizontal ellipsis
                 '\u00a0': ' ',  # Non-breaking space
                 '\ufeff': '',   # Byte order mark
+                # Add more problematic characters commonly seen in LLM responses
+                '\u00ab': '"',  # Left guillemet
+                '\u00bb': '"',  # Right guillemet
+                '\u2039': "'",  # Single left guillemet
+                '\u203a': "'",  # Single right guillemet
             }
             
             for unicode_char, replacement in unicode_replacements.items():
@@ -89,13 +106,23 @@ class LLMProvider(ABC):
                     # Fall back to removing non-ASCII characters
                     text = ''.join(char if ord(char) < 128 else '?' for char in text)
             
-            return text
+            # Final safety check - ensure the result can be safely handled
+            try:
+                # Test encoding to catch any remaining issues
+                text.encode('utf-8')
+                return text
+            except UnicodeEncodeError:
+                # Ultimate fallback: ASCII-only
+                return ''.join(char if ord(char) < 128 else '?' for char in text)
             
         except Exception as e:
             print(f"Text sanitization failed: {e}")
             # Ultimate fallback: ASCII-only text
             try:
-                return ''.join(char if ord(char) < 128 else '?' for char in str(text))
+                if isinstance(text, str):
+                    return ''.join(char if ord(char) < 128 else '?' for char in text)
+                else:
+                    return "Text encoding error - invalid input"
             except Exception:
                 return "Text encoding error"
 
@@ -123,6 +150,10 @@ class OpenAIProvider(LLMProvider):
             )
             result = response.choices[0].message.content.strip()
             return self._sanitize_for_encoding(result)
+        except UnicodeEncodeError as unicode_error:
+            print(f"OpenAI API Unicode encoding error: {unicode_error}")
+            error_msg = "Unicode encoding error in API response"
+            return self._sanitize_for_encoding(error_msg)
         except Exception as e:
             error_msg = f"Error: {str(e)}"
             return self._sanitize_for_encoding(error_msg)
@@ -138,9 +169,15 @@ class OpenAIProvider(LLMProvider):
             )
             result = response.choices[0].message.content.strip()
             return self._sanitize_for_encoding(result)
+        except UnicodeEncodeError as unicode_error:
+            print(f"OpenAI JSON API Unicode encoding error: {unicode_error}")
+            return '{"error": "unicode_encoding_error", "type": "sequence", "name": "EncodingError", "children": []}'
         except Exception as e:
-            error_msg = f"Error: {str(e)}"
-            return self._sanitize_for_encoding(error_msg)
+            error_msg = self._sanitize_for_encoding(f"Error: {str(e)}")
+            if "codec" in error_msg.lower() or "encode" in error_msg.lower():
+                return '{"error": "api_encoding_error", "type": "sequence", "name": "APIEncodingError", "children": []}'
+            else:
+                return f'{{"error": "api_error", "message": "{error_msg}", "type": "sequence", "name": "APIError", "children": []}}'
     
     def is_available(self) -> bool:
         try:
@@ -175,10 +212,11 @@ class GeminiProvider(LLMProvider):
                 contents=prompt
             )
 
-            # Handle response according to new SDK
+            # Handle response according to new SDK with early encoding protection
             result_text = ""
             if hasattr(response, 'text') and response.text:
-                result_text = response.text.strip()
+                # Apply encoding sanitization immediately upon receiving response
+                result_text = self._sanitize_for_encoding(response.text.strip())
             elif hasattr(response, 'candidates') and response.candidates:
                 candidate = response.candidates[0]
                 if hasattr(candidate, 'finish_reason'):
@@ -192,7 +230,9 @@ class GeminiProvider(LLMProvider):
                 # Try to get content from candidate
                 if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
                     if candidate.content.parts:
-                        result_text = candidate.content.parts[0].text.strip()
+                        # Apply encoding sanitization immediately upon extracting text
+                        raw_text = candidate.content.parts[0].text.strip()
+                        result_text = self._sanitize_for_encoding(raw_text)
                 if not result_text:
                     result_text = "No text content in response"
             elif hasattr(response, 'prompt_feedback') and response.prompt_feedback:
@@ -203,10 +243,17 @@ class GeminiProvider(LLMProvider):
             else:
                 result_text = "No response generated"
             
-            return self._sanitize_for_encoding(result_text)
+            # Ensure we return sanitized text
+            return result_text if result_text else "Empty response"
             
+        except UnicodeEncodeError as unicode_error:
+            print(f"Google Gemini API Unicode encoding error: {unicode_error}")
+            # Handle Unicode errors specifically
+            error_msg = "Unicode encoding error in API response"
+            return self._sanitize_for_encoding(error_msg)
         except Exception as e:
             print(f"Google Gemini API error: {e}")
+            # Sanitize the error message itself to prevent propagation of encoding issues
             error_msg = f"Error: {str(e)}"
             return self._sanitize_for_encoding(error_msg)
 
@@ -224,26 +271,39 @@ Use only ASCII characters and standard double quotes (") for JSON strings."""
                 contents=json_prompt
             )
 
-            # Handle response - for JSON, we want the text content
+            # Handle response - for JSON, we want the text content with immediate encoding protection
             result_text = ""
             if hasattr(response, 'text') and response.text:
-                result_text = response.text.strip()
+                # Apply encoding sanitization immediately upon receiving response
+                result_text = self._sanitize_for_encoding(response.text.strip())
             elif hasattr(response, 'candidates') and response.candidates:
                 candidate = response.candidates[0]
                 if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
                     if candidate.content.parts:
-                        result_text = candidate.content.parts[0].text.strip()
+                        # Apply encoding sanitization immediately upon extracting text
+                        raw_text = candidate.content.parts[0].text.strip()
+                        result_text = self._sanitize_for_encoding(raw_text)
                 if not result_text:
                     result_text = "No JSON content in response"
             else:
                 result_text = "No JSON response generated"
             
-            return self._sanitize_for_encoding(result_text)
+            # Ensure we return sanitized text
+            return result_text if result_text else '{"error": "empty_response"}'
             
+        except UnicodeEncodeError as unicode_error:
+            print(f"Google Gemini JSON API Unicode encoding error: {unicode_error}")
+            # Return a safe JSON error response for Unicode issues
+            return '{"error": "unicode_encoding_error", "type": "sequence", "name": "EncodingError", "children": []}'
         except Exception as e:
             print(f"Google Gemini JSON API error: {e}")
-            error_msg = f"Error: {str(e)}"
-            return self._sanitize_for_encoding(error_msg)
+            # Sanitize the error message itself and return safe JSON
+            error_msg = self._sanitize_for_encoding(f"Error: {str(e)}")
+            # Check if the sanitized error message looks like it contains encoding issues
+            if "codec" in error_msg.lower() or "encode" in error_msg.lower():
+                return '{"error": "api_encoding_error", "type": "sequence", "name": "APIEncodingError", "children": []}'
+            else:
+                return f'{{"error": "api_error", "message": "{error_msg}", "type": "sequence", "name": "APIError", "children": []}}'
 
     def is_available(self) -> bool:
         try:
