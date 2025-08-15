@@ -3,6 +3,27 @@
 import sys
 print(sys.executable) 
 
+# Ensure UTF-8 encoding for cross-platform compatibility
+import locale
+import os
+
+# Set UTF-8 encoding for text processing
+if sys.platform == "win32":
+    # Windows-specific encoding setup
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+elif sys.platform == "darwin":
+    # macOS-specific setup
+    locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+else:
+    # Linux and other Unix-like systems
+    try:
+        locale.setlocale(locale.LC_ALL, 'C.UTF-8')
+    except locale.Error:
+        try:
+            locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+        except locale.Error:
+            pass  # Use system default
+
 import rospy
 from std_msgs.msg import String
 from std_srvs.srv import SetBool, SetBoolRequest
@@ -24,7 +45,8 @@ Generate a behavior tree JSON configuration for a robot manipulation task.
 
 Task description: {task_description}
 
-IMPORTANT: Return ONLY the JSON object, no explanations or additional text.
+IMPORTANT: Return ONLY valid JSON object with proper formatting, no explanations or additional text.
+Use double quotes for all strings, proper escaping, and ensure cross-platform compatibility.
 
 Requirements:
 1. Root node must be 'sequence' or 'selector'
@@ -34,6 +56,9 @@ Requirements:
 5. Composite nodes (sequence/selector) must have 'children' array
 6. Leaf nodes (behavior actions) should NOT have 'children' field
 7. For 'place_down' behavior, you can optionally include 'place_x', 'place_y', 'place_z' parameters
+8. Use only double quotes (") for strings, no single quotes
+9. No trailing commas
+10. All string values must be properly escaped
 
 Available behavior types:
 - detect_objects: For detecting objects in the environment using YOLO vision
@@ -338,8 +363,10 @@ class LLMNode:
             # Clean the response to extract JSON if it has extra text
             cleaned_response = self._extract_json_from_response(response)
             
-            # Validate that it's proper JSON
+            # Validate that it's proper JSON with cross-platform error handling
             try:
+                # Additional cleaning for cross-platform JSON parsing
+                cleaned_response = self._sanitize_json_for_parsing(cleaned_response)
                 parsed_json = json.loads(cleaned_response)
                 rospy.loginfo(f"Generated behavior tree JSON: {cleaned_response}")
                 
@@ -379,11 +406,34 @@ class LLMNode:
                 rospy.logerr(f"Generated response is not valid JSON: {e}")
                 rospy.logerr(f"Original response: {response}")
                 rospy.logerr(f"Cleaned response: {cleaned_response}")
-                return GenerateBehaviorTreeResponse(
-                    success=False, 
-                    behavior_tree_json="", 
-                    error_message=f"Invalid JSON generated: {str(e)}"
-                )
+                
+                # Try one more time with aggressive cleaning
+                try:
+                    fallback_cleaned = self._aggressive_json_cleanup(cleaned_response)
+                    parsed_json = json.loads(fallback_cleaned)
+                    rospy.loginfo(f"Successfully parsed JSON after aggressive cleanup: {fallback_cleaned}")
+                    
+                    if auto_assemble:
+                        assembly_success, assembly_message = self._call_behavior_tree_assembly(fallback_cleaned)
+                        return GenerateBehaviorTreeResponse(
+                            success=True, 
+                            behavior_tree_json=fallback_cleaned, 
+                            error_message=f"JSON parsed after cleanup. Assembly: {assembly_message}" if not assembly_success else ""
+                        )
+                    else:
+                        return GenerateBehaviorTreeResponse(
+                            success=True, 
+                            behavior_tree_json=fallback_cleaned, 
+                            error_message="JSON parsed after aggressive cleanup"
+                        )
+                        
+                except json.JSONDecodeError as fallback_error:
+                    rospy.logerr(f"Fallback JSON parsing also failed: {fallback_error}")
+                    return GenerateBehaviorTreeResponse(
+                        success=False, 
+                        behavior_tree_json="", 
+                        error_message=f"Invalid JSON generated: {str(e)}. Fallback also failed: {str(fallback_error)}"
+                    )
                 
         except Exception as e:
             rospy.logerr(f"Error generating behavior tree: {e}")
@@ -423,41 +473,200 @@ class LLMNode:
             )
     
     def _extract_json_from_response(self, response: str) -> str:
-        """Extract JSON from response that might contain additional text"""
+        """Extract JSON from response that might contain additional text - cross-platform compatible"""
         try:
-            # First, try to find JSON within code blocks
             import re
+            import unicodedata
             
-            # Look for JSON in code blocks (```json ... ``` or ``` ... ```)
-            json_blocks = re.findall(r'```(?:json)?\s*(\{.*?\})\s*```', response, re.DOTALL)
-            if json_blocks:
-                return json_blocks[0].strip()
+            # Normalize unicode characters for cross-platform compatibility
+            response = unicodedata.normalize('NFKC', response)
             
-            # Look for JSON objects in the text (find first { to matching })
-            start_idx = response.find('{')
-            if start_idx == -1:
-                return response.strip()
+            # Handle different line endings (Windows CRLF, Unix LF, Mac CR)
+            response = response.replace('\r\n', '\n').replace('\r', '\n')
             
-            brace_count = 0
-            end_idx = start_idx
+            # Remove zero-width characters that can cause parsing issues
+            response = re.sub(r'[\u200b-\u200f\ufeff]', '', response)
             
-            for i in range(start_idx, len(response)):
-                if response[i] == '{':
+            # First, try to find JSON within code blocks with more flexible patterns
+            # Handle various markdown code block formats
+            code_block_patterns = [
+                r'```(?:json|JSON)?\s*(\{.*?\})\s*```',  # Standard markdown
+                r'`{3,}\s*(?:json|JSON)?\s*(\{.*?\})\s*`{3,}',  # Flexible backtick count
+                r'~~~(?:json|JSON)?\s*(\{.*?\})\s*~~~',  # Alternative code block style
+                r'<code[^>]*>\s*(\{.*?\})\s*</code>',  # HTML code tags
+                r'(?:json|JSON):\s*(\{.*?\})',  # Label prefix
+            ]
+            
+            for pattern in code_block_patterns:
+                json_blocks = re.findall(pattern, response, re.DOTALL | re.IGNORECASE)
+                if json_blocks:
+                    candidate = json_blocks[0].strip()
+                    if self._is_valid_json_structure(candidate):
+                        return candidate
+            
+            # Look for JSON objects in the text with improved brace matching
+            # Handle nested objects and arrays properly
+            json_candidates = []
+            
+            # Find all potential JSON start positions
+            for match in re.finditer(r'\{', response):
+                start_idx = match.start()
+                json_str = self._extract_balanced_braces(response, start_idx)
+                if json_str and self._is_valid_json_structure(json_str):
+                    json_candidates.append(json_str)
+            
+            # Return the longest valid JSON (likely the most complete)
+            if json_candidates:
+                return max(json_candidates, key=len)
+            
+            # Last resort: try to clean and return the original response
+            cleaned_response = self._clean_response_text(response)
+            return cleaned_response
+                
+        except Exception as e:
+            rospy.logwarn(f"JSON extraction failed: {e}")
+            # If extraction fails, return cleaned original response
+            return self._clean_response_text(response)
+    
+    def _extract_balanced_braces(self, text: str, start_idx: int) -> str:
+        """Extract JSON with proper brace balancing, handling strings and escape sequences"""
+        if start_idx >= len(text) or text[start_idx] != '{':
+            return ""
+        
+        brace_count = 0
+        in_string = False
+        escape_next = False
+        end_idx = start_idx
+        
+        for i in range(start_idx, len(text)):
+            char = text[i]
+            
+            if escape_next:
+                escape_next = False
+                continue
+            
+            if char == '\\' and in_string:
+                escape_next = True
+                continue
+            
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            
+            if not in_string:
+                if char == '{':
                     brace_count += 1
-                elif response[i] == '}':
+                elif char == '}':
                     brace_count -= 1
                     if brace_count == 0:
                         end_idx = i
                         break
+        
+        if brace_count == 0:
+            return text[start_idx:end_idx + 1].strip()
+        else:
+            return ""
+    
+    def _is_valid_json_structure(self, text: str) -> bool:
+        """Check if text has basic JSON structure without full parsing"""
+        if not text or len(text) < 2:
+            return False
+        
+        text = text.strip()
+        
+        # Must start with { and end with }
+        if not (text.startswith('{') and text.endswith('}')):
+            return False
+        
+        # Should contain basic JSON patterns
+        import re
+        has_quotes = bool(re.search(r'"[^"]*"', text))
+        has_colons = ':' in text
+        
+        return has_quotes and has_colons
+    
+    def _clean_response_text(self, response: str) -> str:
+        """Clean response text for cross-platform compatibility"""
+        try:
+            import re
             
-            if brace_count == 0:
-                return response[start_idx:end_idx + 1].strip()
-            else:
-                return response.strip()
-                
-        except Exception:
-            # If extraction fails, return original response
+            # Remove common prefixes/suffixes that LLMs might add
+            response = re.sub(r'^.*?(?=\{)', '', response, flags=re.DOTALL)  # Remove text before first {
+            response = re.sub(r'\}.*?$', '}', response, flags=re.DOTALL)     # Remove text after last }
+            
+            # Normalize whitespace
+            response = re.sub(r'\s+', ' ', response)
+            
+            # Remove control characters except newlines and tabs
+            response = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', response)
+            
             return response.strip()
+            
+        except Exception:
+            return response.strip() if response else ""
+    
+    def _sanitize_json_for_parsing(self, json_str: str) -> str:
+        """Sanitize JSON string for reliable parsing across platforms"""
+        try:
+            import re
+            
+            # Remove byte order marks (BOM) that can appear on Windows
+            json_str = json_str.lstrip('\ufeff\ufffe')
+            
+            # Fix common JSON formatting issues
+            # Replace single quotes with double quotes (but not inside strings)
+            json_str = re.sub(r"(?<!\\)'([^']*?)(?<!\\)'", r'"\1"', json_str)
+            
+            # Fix trailing commas before closing braces/brackets
+            json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+            
+            # Ensure proper spacing around colons and commas
+            json_str = re.sub(r':\s*', ': ', json_str)
+            json_str = re.sub(r',\s*', ', ', json_str)
+            
+            # Remove any null bytes that might cause issues
+            json_str = json_str.replace('\x00', '')
+            
+            return json_str.strip()
+            
+        except Exception:
+            return json_str.strip() if json_str else ""
+    
+    def _aggressive_json_cleanup(self, json_str: str) -> str:
+        """Aggressive JSON cleanup as last resort for cross-platform compatibility"""
+        try:
+            import re
+            
+            # Remove all non-printable characters except necessary whitespace
+            json_str = re.sub(r'[^\x20-\x7E\n\r\t]', '', json_str)
+            
+            # Fix common issues with quotes
+            # Replace smart quotes with regular quotes
+            json_str = json_str.replace('"', '"').replace('"', '"')
+            json_str = json_str.replace(''', "'").replace(''', "'")
+            
+            # Ensure all property names are quoted
+            json_str = re.sub(r'(\w+)(\s*:\s*)', r'"\1"\2', json_str)
+            
+            # Fix boolean values to lowercase
+            json_str = re.sub(r'\bTrue\b', 'true', json_str)
+            json_str = re.sub(r'\bFalse\b', 'false', json_str)
+            json_str = re.sub(r'\bNull\b', 'null', json_str)
+            json_str = re.sub(r'\bNone\b', 'null', json_str)
+            
+            # Remove trailing commas more aggressively
+            json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+            
+            # Remove duplicate quotes
+            json_str = re.sub(r'"{2,}', '"', json_str)
+            
+            # Ensure consistent spacing
+            json_str = re.sub(r'\s+', ' ', json_str)
+            
+            return json_str.strip()
+            
+        except Exception:
+            return json_str.strip() if json_str else ""
 
 
 def main():
