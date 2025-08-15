@@ -39,7 +39,7 @@ $ source devel/setup.bash && catkin_make
 
 7. Set llm API key
 ```
-export GEMIINI_API_KEY = "<YOUR API KEY>"
+$ export GEMIINI_API_KEY = "<YOUR API KEY>"
 ```
 
 8. Run the system
