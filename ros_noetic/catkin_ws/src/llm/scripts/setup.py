@@ -302,13 +302,17 @@ Use only ASCII characters and standard double quotes (") for JSON strings."""
                 # Provide clearer fallback for JSON flows
                 result_text = '{"error": "no_json_content"}'
 
-            # Enforce ASCII-safe output for JSON to avoid host ASCII codec issues
+            # Prefer UTF-8: Python str 已是 Unicode，僅檢查可否以 UTF-8 編碼
             try:
-                result_text_ascii = result_text.encode('ascii', errors='replace').decode('ascii')
-            except Exception:
-                result_text_ascii = result_text
+                _ = result_text.encode('utf-8')
+            except UnicodeEncodeError:
+                # 保留 Unicode，僅做正規化以避免特殊符號型態差異
+                try:
+                    result_text = unicodedata.normalize('NFKC', result_text)
+                except Exception:
+                    pass
 
-            return result_text_ascii if result_text_ascii else '{"error": "empty_response"}'
+            return result_text or '{"error": "empty_response"}'
             
         except UnicodeEncodeError as unicode_error:
             print(f"Google Gemini JSON API Unicode encoding error: {unicode_error}")
