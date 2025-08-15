@@ -4,6 +4,7 @@ import sys
 print(sys.executable) 
 
 import py_trees
+import py_trees.blackboard
 import rospy
 import json
 import os
@@ -37,9 +38,8 @@ class DetectObjects(py_trees.behaviour.Behaviour):
         self.logger = py_trees.logging.Logger(name)
         self.detected_objects = []
         self.subscriber = rospy.Subscriber('/yolo_detected_targets', String, self._detection_callback)
-        # Initialize blackboard client in __init__ where attach_blackboard_client is available
-        self.blackboard = self.attach_blackboard_client(name=self.name)
-        self.blackboard.register_key(key="detected_objects", access=py_trees.common.Access.WRITE)
+        # Initialize blackboard for py_trees 0.7.x compatibility
+        self.blackboard = py_trees.blackboard.Blackboard()
         
     def setup(self, timeout=None):
         """Setup the YOLO detection subscriber"""
@@ -79,7 +79,7 @@ class DetectObjects(py_trees.behaviour.Behaviour):
                 self.logger.info(obj_info)
             
             # Store detection data in blackboard for other behaviors to use
-            self.blackboard.detected_objects = self.detected_objects
+            self.blackboard.set('detected_objects', self.detected_objects)
             return py_trees.common.Status.SUCCESS
         else:
             self.logger.info("🔍 No objects detected, continuing to search...")
@@ -95,10 +95,8 @@ class PickUp(py_trees.behaviour.Behaviour):
         self.logger = py_trees.logging.Logger(name)
         self.robot_service = None
         self.picked_object = None
-        # Initialize blackboard client in __init__ where attach_blackboard_client is available
-        self.blackboard = self.attach_blackboard_client(name=self.name)
-        self.blackboard.register_key(key="detected_objects", access=py_trees.common.Access.READ)
-        self.blackboard.register_key(key="picked_object", access=py_trees.common.Access.WRITE)
+        # Initialize blackboard for py_trees 0.7.x compatibility
+        self.blackboard = py_trees.blackboard.Blackboard()
         
     def setup(self, timeout=None):
         """Setup the robot control service client"""
@@ -119,7 +117,7 @@ class PickUp(py_trees.behaviour.Behaviour):
             
         try:
             # Get detected objects from blackboard
-            detected_objects = getattr(self.blackboard, 'detected_objects', [])
+            detected_objects = self.blackboard.get('detected_objects') or []
             
             if not detected_objects:
                 self.logger.warn("⚠️ No objects available to pick up")
@@ -145,10 +143,10 @@ class PickUp(py_trees.behaviour.Behaviour):
             if response.success:
                 self.logger.info(f"✅ Successfully picked up {obj_class} at ({x:.2f}, {y:.2f})")
                 # Store picked object info for place behavior
-                self.blackboard.picked_object = target_object
+                self.blackboard.set('picked_object', target_object)
                 # Remove picked object from detected list
                 detected_objects.remove(target_object)
-                self.blackboard.detected_objects = detected_objects
+                self.blackboard.set('detected_objects', detected_objects)
                 return py_trees.common.Status.SUCCESS
             else:
                 self.logger.error(f"❌ Pick up failed: {response.message}")
@@ -169,9 +167,8 @@ class PlaceDown(py_trees.behaviour.Behaviour):
         self.place_x = place_x
         self.place_y = place_y
         self.place_z = place_z
-        # Initialize blackboard client in __init__ where attach_blackboard_client is available
-        self.blackboard = self.attach_blackboard_client(name=self.name)
-        self.blackboard.register_key(key="picked_object", access=py_trees.common.Access.READ)
+        # Initialize blackboard for py_trees 0.7.x compatibility
+        self.blackboard = py_trees.blackboard.Blackboard()
         
     def setup(self, timeout=None):
         """Setup the robot control service client"""
@@ -192,7 +189,7 @@ class PlaceDown(py_trees.behaviour.Behaviour):
             
         try:
             # Get picked object from blackboard
-            picked_object = getattr(self.blackboard, 'picked_object', None)
+            picked_object = self.blackboard.get('picked_object')
             
             if not picked_object:
                 self.logger.warn("⚠️ No object available to place down")
@@ -217,7 +214,7 @@ class PlaceDown(py_trees.behaviour.Behaviour):
             if response.success:
                 self.logger.info(f"✅ Successfully placed {obj_class} at ({self.place_x:.2f}, {self.place_y:.2f}, {self.place_z:.2f})")
                 # Clear picked object from blackboard
-                self.blackboard.picked_object = None
+                self.blackboard.set('picked_object', None)
                 return py_trees.common.Status.SUCCESS
             else:
                 self.logger.error(f"❌ Place down failed: {response.message}")
