@@ -233,7 +233,234 @@ body {
 }
 
 /* Behavior Tree Visualization */
-/* Behavior tree visualization styles */
+/* D3.js Tree Visualization Styles */
+.d3-tree-container {
+    position: relative;
+    width: 100%;
+    height: 400px;
+    background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+    border-radius: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+}
+
+.tree-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.btn-small {
+    font-size: 0.75rem;
+    padding: 0.4rem 0.8rem;
+}
+
+#tree-svg {
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+}
+
+#tree-svg:active {
+    cursor: grabbing;
+}
+
+/* Tree Node Styles */
+.tree-node-shape {
+    stroke-width: 3;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.tree-node-shape:hover {
+    stroke-width: 4;
+    filter: brightness(1.2);
+}
+
+/* Node status colors */
+.node-success {
+    fill: #48bb78;
+    stroke: #38a169;
+}
+
+.node-running {
+    fill: #ed8936;
+    stroke: #dd6b20;
+    animation: pulseNode 2s infinite;
+}
+
+.node-failure {
+    fill: #f56565;
+    stroke: #e53e3e;
+}
+
+.node-invalid {
+    fill: #a0aec0;
+    stroke: #718096;
+    opacity: 0.6;
+}
+
+.node-sequence {
+    fill: #4299e1;
+    stroke: #3182ce;
+}
+
+.node-selector {
+    fill: #ed8936;
+    stroke: #dd6b20;
+}
+
+.node-parallel {
+    fill: #9f7aea;
+    stroke: #805ad5;
+}
+
+.node-behavior {
+    fill: #48bb78;
+    stroke: #38a169;
+}
+
+@keyframes pulseNode {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.1);
+    }
+}
+
+/* Tree Link Styles */
+.tree-link {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.4);
+    stroke-width: 2;
+    transition: all 0.3s ease;
+}
+
+.tree-link.active {
+    stroke: #4299e1;
+    stroke-width: 3;
+}
+
+.tree-link.success {
+    stroke: #48bb78;
+    stroke-width: 3;
+}
+
+.tree-link.running {
+    stroke: #ed8936;
+    stroke-width: 3;
+    stroke-dasharray: 5,5;
+    animation: dashMove 2s linear infinite;
+}
+
+.tree-link.failure {
+    stroke: #f56565;
+    stroke-width: 3;
+}
+
+@keyframes dashMove {
+    0% { stroke-dashoffset: 0; }
+    100% { stroke-dashoffset: 20; }
+}
+
+/* Node Text Styles */
+.node-text {
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    fill: white;
+    text-anchor: middle;
+    pointer-events: none;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+}
+
+.node-type-text {
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 9px;
+    fill: rgba(255,255,255,0.8);
+    text-anchor: middle;
+    pointer-events: none;
+}
+
+/* Tree Legend */
+.tree-legend {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 6px;
+    padding: 8px;
+    color: white;
+    font-size: 11px;
+    backdrop-filter: blur(5px);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 3px 0;
+}
+
+.legend-status {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.legend-status.success {
+    background: #48bb78;
+}
+
+.legend-status.running {
+    background: #ed8936;
+    animation: pulseNode 2s infinite;
+}
+
+.legend-status.failure {
+    background: #f56565;
+}
+
+.legend-status.invalid {
+    background: #a0aec0;
+}
+
+/* Tooltip for nodes */
+.tree-tooltip {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 1000;
+    max-width: 200px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Loading state */
+.tree-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+}
+
+.tree-loading::before {
+    content: "🌳";
+    font-size: 24px;
+    margin-right: 10px;
+    animation: pulse 2s infinite;
+}
+
+/* Legacy behavior tree styles (keep for fallback) */
 .behavior-tree-display {
     padding: 20px;
     border-radius: 15px;

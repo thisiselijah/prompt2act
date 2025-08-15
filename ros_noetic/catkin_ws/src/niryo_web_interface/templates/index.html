@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Niryo 機械手臂控制台</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Add D3.js for advanced tree visualization -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 
 <body>
@@ -82,12 +84,37 @@
             <!-- Behavior Tree Visualization -->
             <div class="control-group">
                 <h3>行為樹狀態</h3>
-                <div class="behavior-tree-display">
-                    <div class="tree-node active">根節點</div>
-                    <div class="tree-connections">
-                        <div class="tree-node">運動控制</div>
-                        <div class="tree-node">視覺處理</div>
-                        <div class="tree-node">決策邏輯</div>
+                <div class="tree-controls">
+                    <button class="btn btn-secondary btn-small" onclick="expandTree()">
+                        🌳 展開
+                    </button>
+                    <button class="btn btn-secondary btn-small" onclick="collapseTree()">
+                        📊 收縮
+                    </button>
+                    <button class="btn btn-secondary btn-small" onclick="centerTree()">
+                        🎯 置中
+                    </button>
+                </div>
+
+                <div class="d3-tree-container" id="d3-tree-container">
+                    <svg id="tree-svg"></svg>
+                    <div class="tree-legend">
+                        <div class="legend-item">
+                            <div class="legend-status success"></div>
+                            <span>成功</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-status running"></div>
+                            <span>執行中</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-status failure"></div>
+                            <span>失敗</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-status invalid"></div>
+                            <span>無效</span>
+                        </div>
                     </div>
                 </div>
             </div>

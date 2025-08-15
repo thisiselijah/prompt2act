@@ -334,8 +334,21 @@ def behavior_tree_status():
         "structure": behavior_tree_data.get('structure'),
         "status": behavior_tree_data.get('status'),
         "timestamp": behavior_tree_data.get('timestamp', 0),
-        "has_data": behavior_tree_data.get('structure') is not None
+        "has_data": behavior_tree_data.get('structure') is not None,
+        "node_count": count_tree_nodes(behavior_tree_data.get('structure')) if behavior_tree_data.get('structure') else 0
     })
+
+def count_tree_nodes(node):
+    """Recursively count nodes in the tree structure"""
+    if not node:
+        return 0
+    
+    count = 1  # Count current node
+    if node.get('children'):
+        for child in node['children']:
+            count += count_tree_nodes(child)
+    
+    return count
 # ========== 主程式 ==========
 if __name__ == '__main__':
     # 註冊信號處理器，確保 Ctrl+C (SIGINT) 或 SIGTERM 會優雅關閉
