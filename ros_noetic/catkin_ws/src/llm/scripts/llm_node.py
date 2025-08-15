@@ -306,14 +306,7 @@ class LLMNode:
             # Get task description from request or use default
             task_description = req.task_description if req.task_description else DEFAULT_TASK_DESCRIPTION
             
-            # Handle auto_assemble parameter with proper error handling
-            try:
-                auto_assemble = req.auto_assemble if hasattr(req, 'auto_assemble') else True  # Default to True for backward compatibility
-            except AttributeError:
-                rospy.logwarn("auto_assemble parameter not found in request, defaulting to True")
-                auto_assemble = True
-            
-            rospy.loginfo(f"Processing behavior tree generation request: task='{task_description}', auto_assemble={auto_assemble}")
+            rospy.loginfo(f"Processing behavior tree generation request: task='{task_description}' (auto-assembly enabled by default)")
             
             # Format the prompt with the task description
             behavior_tree_prompt = BEHAVIOR_TREE_PROMPT_TEMPLATE.format(task_description=task_description)
@@ -355,32 +348,23 @@ class LLMNode:
                 if 'type' not in parsed_json or 'name' not in parsed_json:
                     rospy.logwarn("Generated JSON missing required fields (type/name)")
                 
-                # Call the behavior tree assembly service if requested
-                if auto_assemble:
-                    assembly_success, assembly_message = self._call_behavior_tree_assembly(cleaned_response)
-                    
-                    if assembly_success:
-                        rospy.loginfo(f"Behavior tree assembled successfully: {assembly_message}")
-                        return GenerateBehaviorTreeResponse(
-                            success=True, 
-                            behavior_tree_json=cleaned_response, 
-                            error_message=""
-                        )
-                    else:
-                        rospy.logwarn(f"Behavior tree assembly failed: {assembly_message}")
-                        # Still return success for JSON generation, but include assembly warning
-                        return GenerateBehaviorTreeResponse(
-                            success=True, 
-                            behavior_tree_json=cleaned_response, 
-                            error_message=f"JSON generated but assembly failed: {assembly_message}"
-                        )
-                else:
-                    # Just return the generated JSON without assembling
-                    rospy.loginfo("Behavior tree JSON generated (auto-assembly disabled)")
+                # Always call the behavior tree assembly service automatically
+                assembly_success, assembly_message = self._call_behavior_tree_assembly(cleaned_response)
+                
+                if assembly_success:
+                    rospy.loginfo(f"Behavior tree assembled successfully: {assembly_message}")
                     return GenerateBehaviorTreeResponse(
                         success=True, 
                         behavior_tree_json=cleaned_response, 
                         error_message=""
+                    )
+                else:
+                    rospy.logwarn(f"Behavior tree assembly failed: {assembly_message}")
+                    # Still return success for JSON generation, but include assembly warning
+                    return GenerateBehaviorTreeResponse(
+                        success=True, 
+                        behavior_tree_json=cleaned_response, 
+                        error_message=f"JSON generated but assembly failed: {assembly_message}"
                     )
                 
             except json.JSONDecodeError as e:

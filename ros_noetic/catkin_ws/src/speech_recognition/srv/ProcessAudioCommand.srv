@@ -1,0 +1,10 @@
+# Service for processing audio commands and generating behavior trees
+# Request
+string audio_file_path    # Path to the audio file
+string language          # Language code (e.g., 'en-US', 'zh-CN')
+---
+# Response
+bool success             # Whether the entire process was successful
+string transcribed_text  # The transcribed text from audio
+string behavior_tree_json # The generated behavior tree JSON (auto-assembled)
+string error_message     # Error message if process failed
