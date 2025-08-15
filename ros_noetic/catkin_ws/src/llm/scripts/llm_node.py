@@ -28,16 +28,20 @@ IMPORTANT: Return ONLY the JSON object, no explanations or additional text.
 
 Requirements:
 1. Root node must be 'sequence' or 'selector'
-2. Include appropriate behavior types: 'detect_objects', 'pick_up', 'place_down'
+2. Include appropriate behavior types: 'detect_objects', 'pick_up', 'place_down', 'open_gripper', 'close_gripper', 'move_to_home'
 3. Use proper nesting for complex behaviors
 4. Each node must have 'type' and 'name' fields
 5. Composite nodes (sequence/selector) must have 'children' array
-6. Leaf nodes (detect_objects, pick_up, place_down) should NOT have 'children' field
+6. Leaf nodes (behavior actions) should NOT have 'children' field
+7. For 'place_down' behavior, you can optionally include 'place_x', 'place_y', 'place_z' parameters
 
 Available behavior types:
-- detect_objects: For detecting objects in the environment
-- pick_up: For picking up objects  
-- place_down: For placing objects down
+- detect_objects: For detecting objects in the environment using YOLO vision
+- pick_up: For picking up objects using robot arm and gripper
+- place_down: For placing objects at specified coordinates (supports place_x, place_y, place_z parameters)
+- open_gripper: For opening the robot gripper
+- close_gripper: For closing the robot gripper
+- move_to_home: For moving robot to home/rest position
 - sequence: Execute children in order (all must succeed)
 - selector: Try children until one succeeds
 
@@ -56,7 +60,14 @@ Return ONLY this JSON format (replace content as needed):
     }},
     {{
       "type": "place_down", 
-      "name": "PlaceObject"
+      "name": "PlaceObject",
+      "place_x": 0.15,
+      "place_y": -0.15,
+      "place_z": 0.18
+    }},
+    {{
+      "type": "move_to_home",
+      "name": "ReturnHome"
     }}
   ]
 }}
@@ -81,10 +92,19 @@ BEHAVIOR_TREE_SCHEMA = {
                 "properties": {
                     "type": {
                         "type": "string",
-                        "enum": ["detect_objects", "pick_up", "place_down", "sequence", "selector"]
+                        "enum": ["detect_objects", "pick_up", "place_down", "open_gripper", "close_gripper", "move_to_home", "sequence", "selector"]
                     },
                     "name": {
                         "type": "string"
+                    },
+                    "place_x": {
+                        "type": "number"
+                    },
+                    "place_y": {
+                        "type": "number"
+                    },
+                    "place_z": {
+                        "type": "number"
                     }
                 },
                 "required": ["type", "name"],

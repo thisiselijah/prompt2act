@@ -38,6 +38,16 @@ class DetectObjects(py_trees.behaviour.Behaviour):
         self.detected_objects = []
         self.subscriber = rospy.Subscriber('/yolo_detected_targets', String, self._detection_callback)
         
+    def setup(self, timeout=None):
+        """Setup the YOLO detection subscriber"""
+        try:
+            # Subscriber is already created in __init__, just return success
+            self.logger.info("YOLO detection subscriber ready")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to setup YOLO detection: {e}")
+            return False
+        
     def _detection_callback(self, msg):
         """Callback to receive YOLO detection data"""
         try:
@@ -68,7 +78,7 @@ class PickUp(py_trees.behaviour.Behaviour):
         self.robot_service = None
         self.picked_object = None
         
-    def setup(self, **kwargs):
+    def setup(self, timeout=None):
         """Setup the robot control service client"""
         try:
             rospy.wait_for_service('/arm_command', timeout=5.0)
@@ -134,7 +144,7 @@ class PlaceDown(py_trees.behaviour.Behaviour):
         self.place_y = place_y
         self.place_z = place_z
         
-    def setup(self, **kwargs):
+    def setup(self, timeout=None):
         """Setup the robot control service client"""
         try:
             rospy.wait_for_service('/arm_command', timeout=5.0)
@@ -193,7 +203,7 @@ class OpenGripper(py_trees.behaviour.Behaviour):
         self.logger = py_trees.logging.Logger(name)
         self.robot_service = None
         
-    def setup(self, **kwargs):
+    def setup(self, timeout=None):
         """Setup the robot control service client"""
         try:
             rospy.wait_for_service('/arm_command', timeout=5.0)
@@ -232,7 +242,7 @@ class CloseGripper(py_trees.behaviour.Behaviour):
         self.logger = py_trees.logging.Logger(name)
         self.robot_service = None
         
-    def setup(self, **kwargs):
+    def setup(self, timeout=None):
         """Setup the robot control service client"""
         try:
             rospy.wait_for_service('/arm_command', timeout=5.0)
@@ -271,7 +281,7 @@ class MoveToHome(py_trees.behaviour.Behaviour):
         self.logger = py_trees.logging.Logger(name)
         self.robot_service = None
         
-    def setup(self, **kwargs):
+    def setup(self, timeout=None):
         """Setup the robot control service client"""
         try:
             rospy.wait_for_service('/arm_command', timeout=5.0)

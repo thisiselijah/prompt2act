@@ -7,7 +7,68 @@ This guide explains how to use the LLM (Large Language Model) node in ROS for te
 - [Starting the LLM Node](#starting-the-llm-node)
 - [ROS Topics](#ros-topics)
 - [ROS Services](#ros-services)
-- [Usage Examples](#usage-examples)
+- [Usage Examples](#### Available Behavior Types
+- **detect_objects**: For detecting objects in the environment using YOLO vision system
+- **pick_up**: For picking up objects using robot arm and gripper coordination
+- **place_down**: For placing objects at specified coordinates (supports place_x, place_y, place_z parameters)
+- **open_gripper**: For opening the robot gripper mechanism
+- **close_gripper**: For closing the robot gripper mechanism
+- **move_to_home**: For moving robot to home/rest position safely
+- **sequence**: Execute children in order (all must succeed for sequence success)
+- **selector**: Try children until one succeeds (first success completes selector)
+
+### Enhanced Behavior Tree Examples
+
+#### Basic Pick and Place with Gripper Control
+```json
+{
+  "type": "sequence",
+  "name": "Basic Pick and Place",
+  "children": [
+    {"type": "detect_objects", "name": "Scan Environment"},
+    {"type": "open_gripper", "name": "Prepare Gripper"},
+    {"type": "pick_up", "name": "Grasp Object"},
+    {"type": "place_down", "name": "Place Object", "place_x": 0.15, "place_y": -0.15, "place_z": 0.18},
+    {"type": "move_to_home", "name": "Return to Rest"}
+  ]
+}
+```
+
+#### Object Sorting with Multi-Location Placement
+```json
+{
+  "type": "sequence",
+  "name": "Object Sorting System",
+  "children": [
+    {"type": "detect_objects", "name": "Scan Workspace"},
+    {"type": "selector", "name": "Sort By Color", "children": [
+      {"type": "sequence", "name": "Red Object Processing", "children": [
+        {"type": "pick_up", "name": "Pick Red Object"},
+        {"type": "place_down", "name": "Red Zone", "place_x": 0.12, "place_y": -0.18, "place_z": 0.18}
+      ]},
+      {"type": "sequence", "name": "Blue Object Processing", "children": [
+        {"type": "pick_up", "name": "Pick Blue Object"},
+        {"type": "place_down", "name": "Blue Zone", "place_x": 0.18, "place_y": -0.12, "place_z": 0.18}
+      ]}
+    ]},
+    {"type": "move_to_home", "name": "Task Complete"}
+  ]
+}
+```
+
+#### Gripper Test Sequence
+```json
+{
+  "type": "sequence",
+  "name": "Gripper Function Test",
+  "children": [
+    {"type": "open_gripper", "name": "Test Open"},
+    {"type": "close_gripper", "name": "Test Close"},
+    {"type": "open_gripper", "name": "Reset Open"},
+    {"type": "move_to_home", "name": "Return Home"}
+  ]
+}
+```examples)
 - [Behavior Tree Integration](#behavior-tree-integration)
 - [Troubleshooting](#troubleshooting)
 
@@ -249,51 +310,78 @@ rostopic echo /llm_json_response
 ### Example 3: Behavior Tree Generation and Auto-Assembly
 
 ```bash
-# Terminal 1: Start the LLM node
+# Terminal 1: Start the behavior tree node
+rosrun behavior_tree behavior_tree_node.py
+
+# Terminal 2: Start the LLM node
 rosrun llm llm_node.py _provider:=gemini
 
-# Terminal 2: Generate behavior tree with automatic assembly (proper YAML format)
+# Terminal 3: Generate comprehensive robotic task with auto-assembly
 rosservice call /generate_behavior_tree "
-task_description: 'Robot should scan the environment, find a red object, pick it up, navigate to a designated drop zone, and place the object'
+task_description: 'Robot should scan for red and blue blocks, sort them into separate zones, and return to home position'
 auto_assemble: true
 "
 
 # Expected response format:
 # success: True
-# behavior_tree_json: "{ ... JSON configuration ... }"
-# error_message: ""  (or warning message if assembly failed)
+# behavior_tree_json: "{ ... JSON configuration with detect_objects, pick_up, place_down, move_to_home ... }"
+# error_message: ""
 
-# Terminal 3: Generate JSON only without assembly
-rosservice call /generate_behavior_tree "{task_description: 'Detect all objects in the scene and classify them by type', auto_assemble: false}"
+# Terminal 4: Monitor real-time behavior tree execution
+rostopic echo /behavior_tree_status
+
+# Terminal 5: Generate gripper test sequence
+rosservice call /generate_behavior_tree "
+task_description: 'Test gripper functionality by opening and closing it several times'
+auto_assemble: true
+"
 ```
 
-### Example 4: Enhanced Behavior Tree Workflow with Auto-Assembly
+### Example 4: Enhanced Behavior Tree Workflow with Complete Robot Integration
 
 ```bash
 # Terminal 1: Start behavior tree node first
 rosrun behavior_tree behavior_tree_node.py
 
-# Terminal 2: Start LLM node 
+# Terminal 2: Start YOLO detection node for vision
+rosrun yolo_detection yolo_detection_node.py
+
+# Terminal 3: Start robot control node
+rosrun robot_control robot_control_node.py
+
+# Terminal 4: Start LLM node 
 rosrun llm llm_node.py _provider:=gemini
 
-# Terminal 3: Generate and automatically assemble behavior tree (proper format)
+# Terminal 5: Generate and execute complete robotic workflows
 rosservice call /generate_behavior_tree "
-task_description: 'Pick up a bottle and place it in recycling bin'
+task_description: 'Sort objects by color: pick up red blocks and place them in the red zone at coordinates (0.12, -0.18, 0.18), pick up blue blocks and place them in the blue zone at (0.18, -0.12, 0.18), then return home'
 auto_assemble: true
 "
 
-# The response will show:
-# - success: true if both JSON generation and assembly succeeded
-# - behavior_tree_json: the generated JSON configuration
-# - error_message: empty if successful, or warning if assembly failed but JSON succeeded
-
-# Terminal 4: Check behavior tree status
+# Terminal 6: Monitor live execution status
 rostopic echo /behavior_tree_status
 
-# Terminal 5: Generate JSON without assembly for manual review
-rosservice call /generate_behavior_tree "{task_description: 'Complex multi-step sorting task', auto_assemble: false}"
-# Then manually assemble if desired:
-# rosservice call /assemble_behavior_tree "behavior_tree_json: '{...json from previous response...}'"
+# Terminal 7: Monitor YOLO detections
+rostopic echo /yolo_detected_targets
+
+# Example task variations:
+# Simple pick and place:
+rosservice call /generate_behavior_tree "
+task_description: 'Pick up any object and place it at coordinates (0.15, -0.15, 0.18)'
+auto_assemble: true
+"
+
+# Gripper control sequence:
+rosservice call /generate_behavior_tree "
+task_description: 'Open gripper, close gripper, then move to home position'
+auto_assemble: true
+"
+
+# Complex multi-step task:
+rosservice call /generate_behavior_tree "
+task_description: 'Detect all objects, pick them up one by one, stack them at location (0.20, -0.10, 0.18), and ensure gripper is open when finished'
+auto_assemble: true
+"
 ```
 
 ## Behavior Tree Integration
@@ -309,8 +397,17 @@ The LLM node can generate behavior trees compatible with the behavior tree node 
 ### Integration Flow
 1. **JSON Generation**: LLM generates behavior tree JSON based on task description
 2. **Auto-Assembly** (if enabled): Generated JSON is automatically sent to `/assemble_behavior_tree`
-3. **Visualization**: Assembled tree is automatically visualized in `/frames` directory
-4. **Execution**: Behavior tree begins executing immediately
+3. **Real-time Execution**: Behavior tree begins executing immediately with live status updates
+4. **JSON Status Publishing**: Tree status published via `/behavior_tree_status` topic during execution
+5. **Automatic Termination**: Tree terminates when root reaches SUCCESS or FAILURE status
+6. **Ready for Next Task**: System waits for next behavior tree generation request
+
+### Robot Integration Features
+- **YOLO Vision Integration**: `detect_objects` subscribes to `/yolo_detected_targets` for real-time object detection
+- **Robot Control Integration**: All robot behaviors use `/arm_command` service for Niryo robot control
+- **Blackboard Data Sharing**: Detected objects and manipulation data shared between behaviors
+- **Coordinate System**: Robot coordinates in meters, with configurable placement positions
+- **Error Handling**: Graceful failure recovery with detailed error reporting
 
 The generated JSON follows this structure:
 
@@ -324,12 +421,23 @@ The generated JSON follows this structure:
       "name": "DetectObjects"
     },
     {
+      "type": "open_gripper",
+      "name": "PrepareGripper"
+    },
+    {
       "type": "pick_up",
       "name": "PickUpObject"
     },
     {
       "type": "place_down",
-      "name": "PlaceObject"
+      "name": "PlaceObject",
+      "place_x": 0.15,
+      "place_y": -0.15,
+      "place_z": 0.18
+    },
+    {
+      "type": "move_to_home",
+      "name": "ReturnHome"
     }
   ]
 }
@@ -476,6 +584,31 @@ export ROSCONSOLE_CONFIG_FILE=/path/to/debug/config
 
 ## Advanced Usage
 
+### Enhanced Task Description Capabilities
+
+The LLM node now supports generating complex robotic behaviors with the following enhanced capabilities:
+
+#### Supported Task Types
+- **Object Detection and Sorting**: "Sort red and blue objects into separate zones"
+- **Precise Manipulation**: "Pick up object and place it at coordinates (0.15, -0.15, 0.18)"
+- **Gripper Control**: "Open gripper, pick up object, close gripper, move to home"
+- **Multi-Step Workflows**: "Detect objects, pick each one, stack them at location X"
+- **Conditional Behaviors**: "If red object detected, place in red zone, otherwise place in blue zone"
+
+#### Task Description Best Practices
+1. **Be Specific**: Include exact coordinates when precision is needed
+2. **Mention Colors**: "red blocks", "blue objects" for color-based sorting
+3. **Include End State**: "return to home position", "ensure gripper is open"
+4. **Specify Zones**: "red zone", "blue zone", "stacking area"
+5. **Use Action Verbs**: "detect", "pick up", "place", "sort", "stack"
+
+#### Generated Behavior Capabilities
+- **Vision Integration**: Automatic YOLO detection integration for object recognition
+- **Coordinate Control**: Precise positioning with configurable place_x, place_y, place_z
+- **Gripper Management**: Automatic gripper control with open/close behaviors
+- **Error Recovery**: Robust error handling with graceful failure modes
+- **Real-time Status**: Live execution monitoring via JSON status publishing
+
 ### Custom Prompt Templates
 You can modify the behavior tree prompt template by editing the global constants in `llm_node.py`:
 
@@ -603,3 +736,81 @@ rostopic echo /behavior_tree_status
 ```
 
 For more information or issues, please refer to the project documentation or create an issue in the repository.
+
+## System Architecture
+
+### Component Integration
+The LLM node is part of a comprehensive robotic system with the following components:
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   LLM Node      │────│ Behavior Tree    │────│  Robot Control  │
+│ (Task Planning) │    │   (Execution)    │    │  (Hardware)     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         │              ┌────────────────┐              │
+         └──────────────│  YOLO Detection │──────────────┘
+                        │   (Vision)     │
+                        └────────────────┘
+```
+
+### Data Flow
+1. **Task Input**: Natural language description received via `/llm_service`
+2. **Behavior Generation**: LLM creates behavior tree JSON structure
+3. **Tree Assembly**: Behavior tree node assembles and executes behaviors
+4. **Vision Integration**: YOLO detection provides object coordinates
+5. **Robot Execution**: Physical robot performs manipulation tasks
+6. **Status Monitoring**: Real-time feedback via JSON publishing
+
+### Deployment Configuration
+
+#### Full System Launch
+```bash
+# Launch all system components
+roslaunch niryo_web_interface all_nodes.launch
+```
+
+#### Component Status Monitoring
+```bash
+# Monitor behavior tree execution
+rostopic echo /behavior_tree_status
+
+# Monitor detected objects
+rostopic echo /detected_objects_json
+
+# Check LLM service availability
+rosservice info /llm_service
+```
+
+#### System Health Checks
+```bash
+# Verify all nodes are running
+rosnode list
+
+# Check service availability
+rosservice list | grep -E "(llm|behavior|robot)"
+
+# Monitor topic activity
+rostopic hz /behavior_tree_status
+```
+
+## Dependencies
+
+### Required ROS Packages
+- `rospy`: ROS Python bindings
+- `std_msgs`: Standard ROS message types
+- `behavior_tree`: Custom behavior tree package (for auto-assembly)
+
+### Python Dependencies
+- `google-generativeai`: Google Gemini API
+- `openai`: OpenAI API
+- `json`: JSON parsing
+- `re`: Regular expressions
+
+### System Requirements
+- ROS Noetic
+- Python 3.8+
+- Internet connection for LLM APIs
+- Valid API keys for chosen provider
+
+````
