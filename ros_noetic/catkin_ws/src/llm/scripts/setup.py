@@ -41,6 +41,94 @@ except Exception:
     # Non-fatal if not supported in this environment
     pass
 
+def print_environment_info():
+    """Print current running environment information for debugging"""
+    print("=" * 60)
+    print("ENVIRONMENT INFORMATION")
+    print("=" * 60)
+    
+    # Platform information
+    print(f"Platform: {sys.platform}")
+    print(f"Python version: {sys.version}")
+    print(f"Python executable: {sys.executable}")
+    
+    # Encoding information
+    print(f"Default encoding: {sys.getdefaultencoding()}")
+    print(f"File system encoding: {sys.getfilesystemencoding()}")
+    print(f"stdout encoding: {getattr(sys.stdout, 'encoding', 'Unknown')}")
+    print(f"stderr encoding: {getattr(sys.stderr, 'encoding', 'Unknown')}")
+    
+    # Locale information
+    try:
+        import locale
+        print(f"Locale (LC_ALL): {locale.getlocale()}")
+        print(f"Default locale: {locale.getdefaultlocale()}")
+    except Exception as e:
+        print(f"Locale info error: {e}")
+    
+    # Environment variables
+    env_vars = ['PYTHONIOENCODING', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'SHELL']
+    print("\nEnvironment Variables:")
+    for var in env_vars:
+        value = os.environ.get(var, 'Not set')
+        print(f"  {var}: {value}")
+    
+    # VM/Container detection
+    print(f"\nContainer/VM Detection:")
+    try:
+        # Check for virtualization
+        import subprocess
+        try:
+            result = subprocess.run(['hostnamectl'], capture_output=True, text=True, timeout=2)
+            if 'Virtualization:' in result.stdout:
+                virt_line = [line for line in result.stdout.split('\n') if 'Virtualization:' in line]
+                if virt_line:
+                    print(f"  Virtualization: {virt_line[0].split(':', 1)[1].strip()}")
+            else:
+                print("  Virtualization: Not detected")
+        except:
+            print("  Virtualization: Detection failed")
+        
+        # Check for Docker
+        if os.path.exists('/.dockerenv'):
+            print("  Docker: Running in Docker container")
+        else:
+            print("  Docker: Not detected")
+            
+        # Check for WSL
+        try:
+            with open('/proc/version', 'r') as f:
+                if 'Microsoft' in f.read():
+                    print("  WSL: Running in Windows Subsystem for Linux")
+                else:
+                    print("  WSL: Not detected")
+        except:
+            print("  WSL: Detection failed")
+            
+    except Exception as e:
+        print(f"  Detection error: {e}")
+    
+    # Test encoding capabilities
+    print(f"\nEncoding Test:")
+    test_chars = ['\u201c', '\u201d', '\u2018', '\u2019', '中文', '🚀']
+    for char in test_chars:
+        try:
+            char.encode('utf-8')
+            utf8_ok = "✓"
+        except:
+            utf8_ok = "✗"
+        try:
+            char.encode('ascii')
+            ascii_ok = "✓"
+        except:
+            ascii_ok = "✗"
+        print(f"  '{char}' UTF-8:{utf8_ok} ASCII:{ascii_ok}")
+    
+    print("=" * 60)
+
+# Print environment information at startup
+print_environment_info()
+
 
 class LLMProvider(ABC):
     """Abstract base class for LLM providers"""
