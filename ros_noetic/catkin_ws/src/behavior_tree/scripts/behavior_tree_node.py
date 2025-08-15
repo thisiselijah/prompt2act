@@ -19,6 +19,8 @@ from robot_control.srv import RobotCommand, RobotCommandRequest
 # ============================================================================
 TICK_FREQUENCY_HZ = 2.0  # Behavior tree execution frequency (Hz)
 ENABLE_DETAILED_LOGGING = False  # Enable detailed tick logging
+MAX_TICKS_BEFORE_TIMEOUT = 100  # Maximum ticks before considering task stuck (5 minutes at 1Hz)
+STUCK_CHECK_INTERVAL = 25  # Check for stuck condition every N ticks
 # ============================================================================
 
 # Import for behavior tree JSON serialization
@@ -537,10 +539,14 @@ def assemble_behavior_tree_service():
             root = assemble_tree_from_json(tree_config)
             
             # Store the assembled tree globally
-            global current_behavior_tree, visualizer, last_tree_config
+            global current_behavior_tree, visualizer, last_tree_config, current_tick_count
             current_behavior_tree = py_trees.trees.BehaviourTree(root)
             current_behavior_tree.setup(timeout=15)
             last_tree_config = tree_config
+            
+            # Reset tick counter for new task
+            current_tick_count = 0
+            rospy.loginfo("Global tick counter reset for new behavior tree task")
             
             # Add snapshot visitor for JSON publishing if available
             if json_publisher and JSON_SERIALIZATION_AVAILABLE:
@@ -664,6 +670,7 @@ def hello_world_service():
 current_behavior_tree = None
 json_publisher = None
 last_tree_config = None 
+current_tick_count = 0  # Global tick counter for monitoring stuck tasks 
 
 def main():
     """
@@ -689,72 +696,99 @@ def main():
     # Set the update rate using global frequency variable
     rate = rospy.Rate(TICK_FREQUENCY_HZ)
     rospy.loginfo(f"Behavior tree tick frequency set to {TICK_FREQUENCY_HZ} Hz")
+    rospy.loginfo(f"Task stuck detection: max {MAX_TICKS_BEFORE_TIMEOUT} ticks ({MAX_TICKS_BEFORE_TIMEOUT/TICK_FREQUENCY_HZ:.1f} seconds)")
     
-    # Initialize tick counter
-    tick_count = 0
+    # Initialize global tick counter
+    global current_tick_count
+    current_tick_count = 0
     
     try:
         # Main execution loop
         while not rospy.is_shutdown():
             # Tick the current behavior tree if it exists
-            global current_behavior_tree
+            global current_behavior_tree, current_tick_count
             if current_behavior_tree:
                 # Perform the tick
                 current_behavior_tree.tick()
-                tick_count += 1
+                current_tick_count += 1
+                
+                # Get the root status after ticking
+                status = current_behavior_tree.root.status
                 
                 # Log the tree status with tick information
-                status = current_behavior_tree.root.status
                 if ENABLE_DETAILED_LOGGING:
-                    rospy.loginfo(f"Tick {tick_count}: Tree status = {status}")
+                    rospy.loginfo(f"Tick {current_tick_count}: Tree status = {status}")
                 else:
-                    rospy.loginfo_throttle(2.0, f"Tick {tick_count}: Tree status = {status}")
+                    rospy.loginfo_throttle(2.0, f"Tick {current_tick_count}: Tree status = {status}")
                 
                 # Publish JSON data after each tick if publisher is available
                 if json_publisher and JSON_SERIALIZATION_AVAILABLE:
                     json_publisher.publish_tree_data(current_behavior_tree)
                     if ENABLE_DETAILED_LOGGING:
-                        rospy.logdebug(f"Published JSON data for tick {tick_count}")
+                        rospy.logdebug(f"Published JSON data for tick {current_tick_count}")
                 
-        # Check if behavior tree completed successfully
-        if status == py_trees.common.Status.SUCCESS:
-            rospy.loginfo(f"🎉 Behavior tree completed successfully after {tick_count} ticks!")
-            rospy.loginfo("Tree terminated. Waiting for next behavior tree task...")
+                # Check if behavior tree completed successfully
+                if status == py_trees.common.Status.SUCCESS:
+                    rospy.loginfo(f"🎉 Behavior tree completed successfully after {current_tick_count} ticks!")
+                    rospy.loginfo("Tree terminated. Waiting for next behavior tree task...")
+                    
+                    # Publish final status
+                    if json_publisher and JSON_SERIALIZATION_AVAILABLE:
+                        json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
+                    
+                    # Clean up current tree and reset counter
+                    current_behavior_tree = None
+                    current_tick_count = 0
+                    rospy.loginfo("Behavior tree cleared. Ready for new task.")
+                    
+                elif status == py_trees.common.Status.FAILURE:
+                    rospy.logwarn(f"❌ Behavior tree failed after {current_tick_count} ticks!")
+                    rospy.loginfo("Tree terminated due to failure. Waiting for next behavior tree task...")
+                    
+                    # Publish final status
+                    if json_publisher and JSON_SERIALIZATION_AVAILABLE:
+                        json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
+                    
+                    # Clean up current tree and reset counter
+                    current_behavior_tree = None
+                    current_tick_count = 0
+                    rospy.loginfo("Failed behavior tree cleared. Ready for new task.")
+                    
+                elif status == py_trees.common.Status.RUNNING:
+                    # Tree is still executing - this is normal operation
+                    if current_tick_count % 20 == 0:  # Log every 20 ticks to avoid spam
+                        rospy.loginfo(f"🔄 Behavior tree running (tick {current_tick_count})")
+                    
+                    # Check for stuck task condition
+                    if current_tick_count >= MAX_TICKS_BEFORE_TIMEOUT:
+                        rospy.logerr(f"⏰ Task appears stuck after {current_tick_count} ticks ({current_tick_count/TICK_FREQUENCY_HZ:.1f} seconds)")
+                        rospy.logerr("Terminating stuck behavior tree and waiting for new task...")
+                        
+                        # Publish final status before cleanup
+                        if json_publisher and JSON_SERIALIZATION_AVAILABLE:
+                            json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
+                        
+                        # Clean up stuck tree and reset counter
+                        current_behavior_tree = None
+                        current_tick_count = 0
+                        rospy.logwarn("Stuck behavior tree cleared. Ready for new task.")
+                    
+                    elif current_tick_count % STUCK_CHECK_INTERVAL == 0:
+                        # Periodic stuck check warning
+                        remaining_ticks = MAX_TICKS_BEFORE_TIMEOUT - current_tick_count
+                        remaining_time = remaining_ticks / TICK_FREQUENCY_HZ
+                        rospy.logwarn(f"⚠️ Task running for {current_tick_count} ticks, will timeout in {remaining_ticks} ticks ({remaining_time:.1f}s)")
+                
+                elif status == py_trees.common.Status.INVALID:
+                    rospy.logwarn(f"⚠️ Behavior tree has invalid status after {current_tick_count} ticks")
+                    
+                    # Check if invalid status persists for too long
+                    if current_tick_count > 100:  # Reset after many invalid ticks
+                        rospy.logerr("Resetting behavior tree due to persistent invalid status")
+                        current_behavior_tree = None
+                        current_tick_count = 0
             
-            # Publish final status
-            if json_publisher and JSON_SERIALIZATION_AVAILABLE:
-                json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
-            
-            # Clean up current tree (py_trees doesn't have shutdown method)
-            current_behavior_tree = None
-            tick_count = 0
-            rospy.loginfo("Behavior tree cleared. Ready for new task.")
-            
-        elif status == py_trees.common.Status.FAILURE:
-            rospy.logwarn(f"❌ Behavior tree failed after {tick_count} ticks!")
-            rospy.loginfo("Tree terminated due to failure. Waiting for next behavior tree task...")
-            
-            # Publish final status
-            if json_publisher and JSON_SERIALIZATION_AVAILABLE:
-                json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
-            
-            # Clean up current tree (py_trees doesn't have shutdown method)
-            current_behavior_tree = None
-            tick_count = 0
-            rospy.loginfo("Failed behavior tree cleared. Ready for new task.")
-            
-        elif status == py_trees.common.Status.RUNNING:
-            # Tree is still executing - this is normal operation
-            if tick_count % 20 == 0:  # Log every 20 ticks to avoid spam
-                rospy.loginfo(f"🔄 Behavior tree running (tick {tick_count})")
-        
-        elif status == py_trees.common.Status.INVALID:
-            rospy.logwarn(f"⚠️ Behavior tree has invalid status after {tick_count} ticks")
-            # Don't reset the tree immediately - might be temporary
-            if tick_count > 100:  # Reset after many invalid ticks
-                rospy.logerr("Resetting behavior tree due to persistent invalid status")
-                current_behavior_tree = None
-                tick_count = 0            # Sleep to maintain the desired rate
+            # Sleep to maintain the desired rate
             rate.sleep()
             
     except KeyboardInterrupt:
@@ -763,7 +797,7 @@ def main():
         # Clean shutdown (py_trees doesn't have shutdown method)
         if current_behavior_tree:
             current_behavior_tree = None
-        rospy.loginfo(f"Behavior tree node completed {tick_count} ticks")
+        rospy.loginfo(f"Behavior tree node completed {current_tick_count} ticks")
 
 if __name__ == '__main__':
     main()
