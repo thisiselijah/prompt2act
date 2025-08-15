@@ -676,13 +676,15 @@ def main():
     """
     Main function to initialize ROS node and run behavior tree
     """
+    # Declare global variables at the top of function
+    global json_publisher, current_behavior_tree, current_tick_count
+    
     # Initialize the ROS node
     rospy.init_node('behavior_tree_node', anonymous=True)
     rospy.loginfo("Behavior Tree Node started")
     rospy.loginfo(f"Configuration: Tick frequency = {TICK_FREQUENCY_HZ} Hz")
     
     # Initialize JSON publisher
-    global json_publisher
     if JSON_SERIALIZATION_AVAILABLE:
         json_publisher = BehaviorTreeJSONPublisher("behavior_tree_status")
         rospy.loginfo("Behavior tree JSON publisher initialized")
@@ -699,14 +701,12 @@ def main():
     rospy.loginfo(f"Task stuck detection: max {MAX_TICKS_BEFORE_TIMEOUT} ticks ({MAX_TICKS_BEFORE_TIMEOUT/TICK_FREQUENCY_HZ:.1f} seconds)")
     
     # Initialize global tick counter
-    global current_tick_count
     current_tick_count = 0
     
     try:
         # Main execution loop
         while not rospy.is_shutdown():
             # Tick the current behavior tree if it exists
-            global current_behavior_tree, current_tick_count
             if current_behavior_tree:
                 # Perform the tick
                 current_behavior_tree.tick()
