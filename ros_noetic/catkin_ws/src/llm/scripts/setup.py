@@ -31,6 +31,16 @@ else:
         except locale.Error:
             pass  # Use system default
 
+# Ensure stdout/stderr can print UTF-8 safely (helps when host defaults to ASCII)
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    # Non-fatal if not supported in this environment
+    pass
+
 
 class LLMProvider(ABC):
     """Abstract base class for LLM providers"""
@@ -212,39 +222,43 @@ class GeminiProvider(LLMProvider):
                 contents=prompt
             )
 
-            # Handle response according to new SDK with early encoding protection
-            result_text = ""
-            if hasattr(response, 'text') and response.text:
-                # Apply encoding sanitization immediately upon receiving response
-                result_text = self._sanitize_for_encoding(response.text.strip())
-            elif hasattr(response, 'candidates') and response.candidates:
-                candidate = response.candidates[0]
-                if hasattr(candidate, 'finish_reason'):
-                    reason = candidate.finish_reason
-                    if reason == types.FinishReason.SAFETY:
-                        result_text = "Response blocked due to safety concerns"
-                    elif reason == types.FinishReason.RECITATION:
-                        result_text = "Response blocked due to recitation concerns"
-                    elif reason == types.FinishReason.OTHER:
-                        result_text = "Response blocked for other reasons"
-                # Try to get content from candidate
-                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                    if candidate.content.parts:
-                        # Apply encoding sanitization immediately upon extracting text
-                        raw_text = candidate.content.parts[0].text.strip()
-                        result_text = self._sanitize_for_encoding(raw_text)
-                if not result_text:
-                    result_text = "No text content in response"
-            elif hasattr(response, 'prompt_feedback') and response.prompt_feedback:
-                if getattr(response.prompt_feedback, 'block_reason', None):
-                    result_text = f"Prompt blocked: {response.prompt_feedback.block_reason}"
-                else:
-                    result_text = "No response generated"
-            else:
+            # Prefer extracting from candidates/parts to avoid potential encoding on response.text
+            result_chunks = []
+            if hasattr(response, 'candidates') and response.candidates:
+                for candidate in response.candidates:
+                    # Map finish reasons to messages if applicable
+                    try:
+                        reason = getattr(candidate, 'finish_reason', None)
+                        if reason == types.FinishReason.SAFETY:
+                            result_chunks.append("Response blocked due to safety concerns")
+                        elif reason == types.FinishReason.RECITATION:
+                            result_chunks.append("Response blocked due to recitation concerns")
+                        elif reason == types.FinishReason.OTHER:
+                            # Only add if no content is present
+                            if not getattr(candidate, 'content', None):
+                                result_chunks.append("Response blocked for other reasons")
+                    except Exception:
+                        pass
+
+                    content = getattr(candidate, 'content', None)
+                    parts = getattr(content, 'parts', None) if content is not None else None
+                    if parts:
+                        for p in parts:
+                            text_part = getattr(p, 'text', None)
+                            if text_part:
+                                result_chunks.append(self._sanitize_for_encoding(text_part))
+
+            # Fallbacks if no candidates/parts or empty content
+            if not result_chunks and hasattr(response, 'prompt_feedback') and response.prompt_feedback:
+                block_reason = getattr(response.prompt_feedback, 'block_reason', None)
+                if block_reason:
+                    result_chunks.append(f"Prompt blocked: {block_reason}")
+
+            result_text = " ".join([chunk.strip() for chunk in result_chunks if chunk]).strip()
+            if not result_text:
                 result_text = "No response generated"
-            
-            # Ensure we return sanitized text
-            return result_text if result_text else "Empty response"
+
+            return result_text
             
         except UnicodeEncodeError as unicode_error:
             print(f"Google Gemini API Unicode encoding error: {unicode_error}")
@@ -271,25 +285,30 @@ Use only ASCII characters and standard double quotes (") for JSON strings."""
                 contents=json_prompt
             )
 
-            # Handle response - for JSON, we want the text content with immediate encoding protection
-            result_text = ""
-            if hasattr(response, 'text') and response.text:
-                # Apply encoding sanitization immediately upon receiving response
-                result_text = self._sanitize_for_encoding(response.text.strip())
-            elif hasattr(response, 'candidates') and response.candidates:
-                candidate = response.candidates[0]
-                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                    if candidate.content.parts:
-                        # Apply encoding sanitization immediately upon extracting text
-                        raw_text = candidate.content.parts[0].text.strip()
-                        result_text = self._sanitize_for_encoding(raw_text)
-                if not result_text:
-                    result_text = "No JSON content in response"
-            else:
-                result_text = "No JSON response generated"
-            
-            # Ensure we return sanitized text
-            return result_text if result_text else '{"error": "empty_response"}'
+            # Build response strictly from candidates/parts to avoid response.text path
+            result_chunks = []
+            if hasattr(response, 'candidates') and response.candidates:
+                for candidate in response.candidates:
+                    content = getattr(candidate, 'content', None)
+                    parts = getattr(content, 'parts', None) if content is not None else None
+                    if parts:
+                        for p in parts:
+                            text_part = getattr(p, 'text', None)
+                            if text_part:
+                                result_chunks.append(self._sanitize_for_encoding(text_part))
+
+            result_text = " ".join([chunk.strip() for chunk in result_chunks if chunk]).strip()
+            if not result_text:
+                # Provide clearer fallback for JSON flows
+                result_text = '{"error": "no_json_content"}'
+
+            # Enforce ASCII-safe output for JSON to avoid host ASCII codec issues
+            try:
+                result_text_ascii = result_text.encode('ascii', errors='replace').decode('ascii')
+            except Exception:
+                result_text_ascii = result_text
+
+            return result_text_ascii if result_text_ascii else '{"error": "empty_response"}'
             
         except UnicodeEncodeError as unicode_error:
             print(f"Google Gemini JSON API Unicode encoding error: {unicode_error}")
@@ -313,7 +332,15 @@ Use only ASCII characters and standard double quotes (") for JSON strings."""
                 model="gemini-2.5-flash",
                 contents="Hello"
             )
-            return hasattr(response, 'text') and response.text is not None
+            # Consider available if we get at least one candidate or any parts
+            if hasattr(response, 'candidates') and response.candidates:
+                for candidate in response.candidates:
+                    content = getattr(candidate, 'content', None)
+                    parts = getattr(content, 'parts', None) if content is not None else None
+                    if parts:
+                        return True
+            # Fallback to True if no error was thrown (some SDK versions may omit candidates for trivial prompts)
+            return True
         except Exception as e:
             print(f"Gemini availability check failed: {e}")
             return False

@@ -696,8 +696,7 @@ def main():
                     if json_publisher and JSON_SERIALIZATION_AVAILABLE:
                         json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
                     
-                    # Clean up current tree
-                    current_behavior_tree.shutdown()
+                    # Clean up current tree (py_trees doesn't have shutdown method)
                     current_behavior_tree = None
                     tick_count = 0
                     rospy.loginfo("Behavior tree cleared. Ready for new task.")
@@ -710,8 +709,7 @@ def main():
                     if json_publisher and JSON_SERIALIZATION_AVAILABLE:
                         json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
                     
-                    # Clean up current tree
-                    current_behavior_tree.shutdown()
+                    # Clean up current tree (py_trees doesn't have shutdown method)
                     current_behavior_tree = None
                     tick_count = 0
                     rospy.loginfo("Failed behavior tree cleared. Ready for new task.")
@@ -722,9 +720,9 @@ def main():
     except KeyboardInterrupt:
         rospy.loginfo("Behavior Tree Node shutting down")
     finally:
-        # Clean shutdown
+        # Clean shutdown (py_trees doesn't have shutdown method)
         if current_behavior_tree:
-            current_behavior_tree.shutdown()
+            current_behavior_tree = None
         rospy.loginfo(f"Behavior tree node completed {tick_count} ticks")
 
 if __name__ == '__main__':
