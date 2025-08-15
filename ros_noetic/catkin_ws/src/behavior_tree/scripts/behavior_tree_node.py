@@ -116,19 +116,25 @@ class PickUp(py_trees.behaviour.Behaviour):
     def setup(self, timeout=None):
         """Setup the robot control service client"""
         try:
-            rospy.wait_for_service('/arm_command', timeout=5.0)
-            self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
-            self.logger.info("Robot control service connected")
+            # Don't wait for service during setup - defer to update() method
+            # This prevents setup failures when robot services are not yet available
+            self.logger.info("Setup completed - will connect to robot service when needed")
             return True
-        except rospy.ROSException as e:
-            self.logger.error(f"Failed to connect to robot service: {e}")
+        except Exception as e:
+            self.logger.error(f"Setup failed: {e}")
             return False
 
     def update(self):
         """Execute pick up behavior"""
+        # Connect to service if not already connected
         if not self.robot_service:
-            self.logger.error("❌ Robot service not available")
-            return py_trees.common.Status.FAILURE
+            try:
+                rospy.wait_for_service('/arm_command', timeout=2.0)
+                self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+                self.logger.info("Robot control service connected")
+            except rospy.ROSException as e:
+                self.logger.error(f"❌ Robot service not available: {e}")
+                return py_trees.common.Status.FAILURE
             
         try:
             # Get detected objects from blackboard
@@ -188,19 +194,25 @@ class PlaceDown(py_trees.behaviour.Behaviour):
     def setup(self, timeout=None):
         """Setup the robot control service client"""
         try:
-            rospy.wait_for_service('/arm_command', timeout=5.0)
-            self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
-            self.logger.info("Robot control service connected")
+            # Don't wait for service during setup - defer to update() method
+            # This prevents setup failures when robot services are not yet available
+            self.logger.info("Setup completed - will connect to robot service when needed")
             return True
-        except rospy.ROSException as e:
-            self.logger.error(f"Failed to connect to robot service: {e}")
+        except Exception as e:
+            self.logger.error(f"Setup failed: {e}")
             return False
 
     def update(self):
         """Execute place down behavior"""
+        # Connect to service if not already connected
         if not self.robot_service:
-            self.logger.error("❌ Robot service not available")
-            return py_trees.common.Status.FAILURE
+            try:
+                rospy.wait_for_service('/arm_command', timeout=2.0)
+                self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+                self.logger.info("Robot control service connected")
+            except rospy.ROSException as e:
+                self.logger.error(f"❌ Robot service not available: {e}")
+                return py_trees.common.Status.FAILURE
             
         try:
             # Get picked object from blackboard
@@ -250,17 +262,25 @@ class OpenGripper(py_trees.behaviour.Behaviour):
     def setup(self, timeout=None):
         """Setup the robot control service client"""
         try:
-            rospy.wait_for_service('/arm_command', timeout=5.0)
-            self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+            # Don't wait for service during setup - defer to update() method
+            # This prevents setup failures when robot services are not yet available
+            self.logger.info("Setup completed - will connect to robot service when needed")
             return True
-        except rospy.ROSException as e:
-            self.logger.error(f"Failed to connect to robot service: {e}")
+        except Exception as e:
+            self.logger.error(f"Setup failed: {e}")
             return False
 
     def update(self):
         """Execute open gripper behavior"""
+        # Connect to service if not already connected
         if not self.robot_service:
-            return py_trees.common.Status.FAILURE
+            try:
+                rospy.wait_for_service('/arm_command', timeout=2.0)
+                self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+                self.logger.info("Robot control service connected")
+            except rospy.ROSException as e:
+                self.logger.error(f"❌ Robot service not available: {e}")
+                return py_trees.common.Status.FAILURE
             
         try:
             req = RobotCommandRequest()
@@ -289,17 +309,25 @@ class CloseGripper(py_trees.behaviour.Behaviour):
     def setup(self, timeout=None):
         """Setup the robot control service client"""
         try:
-            rospy.wait_for_service('/arm_command', timeout=5.0)
-            self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+            # Don't wait for service during setup - defer to update() method
+            # This prevents setup failures when robot services are not yet available
+            self.logger.info("Setup completed - will connect to robot service when needed")
             return True
-        except rospy.ROSException as e:
-            self.logger.error(f"Failed to connect to robot service: {e}")
+        except Exception as e:
+            self.logger.error(f"Setup failed: {e}")
             return False
 
     def update(self):
         """Execute close gripper behavior"""
+        # Connect to service if not already connected
         if not self.robot_service:
-            return py_trees.common.Status.FAILURE
+            try:
+                rospy.wait_for_service('/arm_command', timeout=2.0)
+                self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+                self.logger.info("Robot control service connected")
+            except rospy.ROSException as e:
+                self.logger.error(f"❌ Robot service not available: {e}")
+                return py_trees.common.Status.FAILURE
             
         try:
             req = RobotCommandRequest()
@@ -328,17 +356,25 @@ class MoveToHome(py_trees.behaviour.Behaviour):
     def setup(self, timeout=None):
         """Setup the robot control service client"""
         try:
-            rospy.wait_for_service('/arm_command', timeout=5.0)
-            self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+            # Don't wait for service during setup - defer to update() method
+            # This prevents setup failures when robot services are not yet available
+            self.logger.info("Setup completed - will connect to robot service when needed")
             return True
-        except rospy.ROSException as e:
-            self.logger.error(f"Failed to connect to robot service: {e}")
+        except Exception as e:
+            self.logger.error(f"Setup failed: {e}")
             return False
 
     def update(self):
         """Execute move to home behavior"""
+        # Connect to service if not already connected
         if not self.robot_service:
-            return py_trees.common.Status.FAILURE
+            try:
+                rospy.wait_for_service('/arm_command', timeout=2.0)
+                self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+                self.logger.info("Robot control service connected")
+            except rospy.ROSException as e:
+                self.logger.error(f"❌ Robot service not available: {e}")
+                return py_trees.common.Status.FAILURE
             
         try:
             req = RobotCommandRequest()
@@ -551,29 +587,54 @@ def assemble_behavior_tree_service():
             # Assemble the behavior tree based on JSON configuration
             root = assemble_tree_from_json(tree_config)
             
+            # Check if root was successfully created
+            if root is None:
+                error_msg = "Failed to create behavior tree root from configuration"
+                rospy.logerr(error_msg)
+                return AssembleBehaviorTreeResponse(success=False, message=error_msg)
+            
             # Store the assembled tree globally
-            global current_behavior_tree, visualizer, last_tree_config, current_tick_count
+            global current_behavior_tree, last_tree_config, current_tick_count
             current_behavior_tree = py_trees.trees.BehaviourTree(root)
-            current_behavior_tree.setup(timeout=15)
-            last_tree_config = tree_config
             
-            # Reset tick counter for new task
-            current_tick_count = 0
-            rospy.loginfo("Global tick counter reset for new behavior tree task")
-            
-            # Add snapshot visitor for JSON publishing if available
-            if json_publisher and JSON_SERIALIZATION_AVAILABLE:
-                # Remove existing snapshot visitor if any
-                current_behavior_tree.visitors = [v for v in current_behavior_tree.visitors 
-                                                if not isinstance(v, py_trees.visitors.SnapshotVisitor)]
-                # Add our snapshot visitor
-                current_behavior_tree.visitors.append(json_publisher.get_snapshot_visitor())
+            # Setup the behavior tree with more resilient error handling
+            try:
+                setup_success = current_behavior_tree.setup(timeout=15)
+                if not setup_success:
+                    rospy.logwarn("Some behaviors failed to setup - tree may have limited functionality")
+                    rospy.logwarn("This is normal if robot services are not yet available")
+                    # Don't fail completely - allow tree to run and behaviors will connect when services become available
                 
-                # Publish initial tree summary with structure
-                json_publisher.publish_tree_summary(current_behavior_tree, tree_config)
-            
-            rospy.loginfo("Behavior tree assembled successfully")
-            return AssembleBehaviorTreeResponse(success=True, message="Behavior tree assembled successfully")
+                last_tree_config = tree_config
+                
+                # Reset tick counter for new task
+                current_tick_count = 0
+                rospy.loginfo("Global tick counter reset for new behavior tree task")
+                
+                # Add snapshot visitor for JSON publishing if available
+                if json_publisher and JSON_SERIALIZATION_AVAILABLE and current_behavior_tree:
+                    # Remove existing snapshot visitor if any
+                    current_behavior_tree.visitors = [v for v in current_behavior_tree.visitors 
+                                                    if not isinstance(v, py_trees.visitors.SnapshotVisitor)]
+                    # Add our snapshot visitor
+                    current_behavior_tree.visitors.append(json_publisher.get_snapshot_visitor())
+                    
+                    # Publish initial tree summary with structure
+                    json_publisher.publish_tree_summary(current_behavior_tree, tree_config)
+                
+                rospy.loginfo("Behavior tree assembled successfully")
+                return AssembleBehaviorTreeResponse(success=True, message="Behavior tree assembled successfully")
+                
+            except Exception as setup_error:
+                rospy.logerr(f"Error during tree setup: {setup_error}")
+                rospy.logwarn("Continuing with tree assembly - behaviors will connect to services when available")
+                
+                # Store config and continue - don't fail the entire assembly
+                last_tree_config = tree_config
+                current_tick_count = 0
+                
+                return AssembleBehaviorTreeResponse(success=True, 
+                    message=f"Behavior tree assembled with setup warnings: {setup_error}")
             
         except json.JSONDecodeError as e:
             error_msg = f"Failed to parse JSON: {str(e)}"
@@ -596,31 +657,48 @@ def assemble_tree_from_json(config):
     Args:
         config (dict): JSON configuration for the behavior tree
     Returns:
-        py_trees behavior: Root of the assembled tree
+        py_trees behavior: Root of the assembled tree, or None if failed
     """
-    if config.get('type') == 'sequence':
-        root = py_trees.composites.Sequence(config.get('name', 'Root'), memory=False)
+    if not config:
+        rospy.logerr("Empty configuration provided")
+        return None
+        
+    root_type = config.get('type')
+    root_name = config.get('name', 'Root')
+    
+    if root_type == 'sequence':
+        root = py_trees.composites.Sequence(root_name, memory=False)
         
         # Add children from the configuration
         for child_config in config.get('children', []):
             child = create_behavior_from_config(child_config)
             if child:
                 root.add_child(child)
+            else:
+                rospy.logwarn(f"Failed to create child behavior from config: {child_config}")
                 
-    elif config.get('type') == 'selector':
-        root = py_trees.composites.Selector(config.get('name', 'Root'), memory=False)
+    elif root_type == 'selector':
+        root = py_trees.composites.Selector(root_name, memory=False)
         
         # Add children from the configuration
         for child_config in config.get('children', []):
             child = create_behavior_from_config(child_config)
             if child:
                 root.add_child(child)
+            else:
+                rospy.logwarn(f"Failed to create child behavior from config: {child_config}")
                 
     else:
-        # Default return null if no valid type is found
-        rospy.logwarn(f"Unknown root behavior type: {config.get('type')}")
+        # Unknown root behavior type
+        rospy.logerr(f"Unknown or missing root behavior type: {root_type}")
         return None
     
+    # Validate that root has at least one child
+    if len(root.children) == 0:
+        rospy.logerr(f"Root behavior '{root_name}' has no valid children")
+        return None
+    
+    rospy.loginfo(f"Successfully assembled {root_type} root with {len(root.children)} children")
     return root
 
 def create_behavior_from_config(config):
@@ -629,43 +707,56 @@ def create_behavior_from_config(config):
     Args:
         config (dict): Configuration for a single behavior
     Returns:
-        py_trees behavior: The created behavior
+        py_trees behavior: The created behavior, or None if failed
     """
+    if not config:
+        rospy.logwarn("Empty behavior configuration provided")
+        return None
+        
     behavior_type = config.get('type')
     behavior_name = config.get('name', 'UnnamedBehavior')
     
-    if behavior_type == 'detect_objects':
-        return DetectObjects(behavior_name)
-    elif behavior_type == 'pick_up':
-        return PickUp(behavior_name)
-    elif behavior_type == 'place_down':
-        # Allow custom place coordinates from config
-        place_x = config.get('place_x', 0.15)
-        place_y = config.get('place_y', -0.15) 
-        place_z = config.get('place_z', 0.18)
-        return PlaceDown(behavior_name, place_x, place_y, place_z)
-    elif behavior_type == 'open_gripper':
-        return OpenGripper(behavior_name)
-    elif behavior_type == 'close_gripper':
-        return CloseGripper(behavior_name)
-    elif behavior_type == 'move_to_home':
-        return MoveToHome(behavior_name)
-    elif behavior_type == 'sequence':
-        sequence = py_trees.composites.Sequence(behavior_name, memory=False)
-        for child_config in config.get('children', []):
-            child = create_behavior_from_config(child_config)
-            if child:
-                sequence.add_child(child)
-        return sequence
-    elif behavior_type == 'selector':
-        selector = py_trees.composites.Selector(behavior_name, memory=False)
-        for child_config in config.get('children', []):
-            child = create_behavior_from_config(child_config)
-            if child:
-                selector.add_child(child)
-        return selector
-    else:
-        rospy.logwarn(f"Unknown behavior type: {behavior_type}")
+    try:
+        if behavior_type == 'detect_objects':
+            return DetectObjects(behavior_name)
+        elif behavior_type == 'pick_up':
+            return PickUp(behavior_name)
+        elif behavior_type == 'place_down':
+            # Allow custom place coordinates from config
+            place_x = config.get('place_x', 0.15)
+            place_y = config.get('place_y', -0.15) 
+            place_z = config.get('place_z', 0.18)
+            return PlaceDown(behavior_name, place_x, place_y, place_z)
+        elif behavior_type == 'open_gripper':
+            return OpenGripper(behavior_name)
+        elif behavior_type == 'close_gripper':
+            return CloseGripper(behavior_name)
+        elif behavior_type == 'move_to_home':
+            return MoveToHome(behavior_name)
+        elif behavior_type == 'sequence':
+            sequence = py_trees.composites.Sequence(behavior_name, memory=False)
+            for child_config in config.get('children', []):
+                child = create_behavior_from_config(child_config)
+                if child:
+                    sequence.add_child(child)
+                else:
+                    rospy.logwarn(f"Failed to create child for sequence '{behavior_name}'")
+            return sequence
+        elif behavior_type == 'selector':
+            selector = py_trees.composites.Selector(behavior_name, memory=False)
+            for child_config in config.get('children', []):
+                child = create_behavior_from_config(child_config)
+                if child:
+                    selector.add_child(child)
+                else:
+                    rospy.logwarn(f"Failed to create child for selector '{behavior_name}'")
+            return selector
+        else:
+            rospy.logerr(f"Unknown behavior type: {behavior_type}")
+            return None
+            
+    except Exception as e:
+        rospy.logerr(f"Error creating behavior '{behavior_name}' of type '{behavior_type}': {e}")
         return None
     
 # Hello World Service
@@ -723,10 +814,10 @@ def main():
     
     # Initialize JSON publisher
     if JSON_SERIALIZATION_AVAILABLE:
-        json_publisher = BehaviorTreeJSONPublisher("behavior_tree_status")
-        rospy.loginfo("Behavior tree JSON publisher initialized")
+        json_publisher = BehaviorTreeJSONPublisher("behavior_tree_json")
+        rospy.loginfo("Behavior tree JSON publisher initialized on topic: /behavior_tree_json")
     else:
-        rospy.logwarn("JSON serialization disabled")
+        rospy.logwarn("JSON serialization disabled - tree visualization unavailable")
     
     # Start the behavior tree assembly service
     service0 = assemble_behavior_tree_service()

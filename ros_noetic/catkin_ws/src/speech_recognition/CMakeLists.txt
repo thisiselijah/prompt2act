@@ -164,7 +164,6 @@ set(PYTHON_EXECUTABLE /root/.pyenv/versions/3.9.19/bin/python3.9)
 
 catkin_install_python(PROGRAMS
   script/speech_recognition_node.py
-  script/demo_audio_command.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

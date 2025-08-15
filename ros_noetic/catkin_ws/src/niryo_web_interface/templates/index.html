@@ -1,49 +1,103 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
 <head>
-    <title>即時鏡頭畫面</title>
-
-    <!--CSS-->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Niryo 機械手臂控制台</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
 <body>
-    <div class="camera-wrapper">
-        <div class="camera-container">
-            <div class="content-row">
-
-                 <!-- 左邊：鏡頭畫面 -->
-                <div class="vertical-container">
-                    <h1>鏡頭畫面</h1>
-                    <img id="camera-stream" src="{{ url_for('video') }}" width="800" height="480">
-                </div>
-
-                <!-- 右邊：行為樹 -->
-                <div class="vertical-container">
-                    <h1>行為樹</h1>
-                    <div class="behavior-tree-box">
-                        <!-- 你可以在這裡放其他功能或資訊 -->
-                    </div>
-                </div>
-
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <div class="nav-brand">
+            <h1>🤖 Niryo 控制台</h1>
+        </div>
+        <div class="nav-status">
+            <div class="status-group">
+                <span class="status-label">攝影機狀態:</span>
+                <div class="status-indicator" id="status-indicator"></div>
+                <span class="status-text" id="status-text">檢查中...</span>
             </div>
         </div>
-    </div>
+    </nav>
 
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Camera Section -->
+        <section class="camera-section">
+            <div class="camera-header">
+                <h2>即時影像</h2>
+                <button class="btn btn-secondary" id="camera-reconnect-btn" onclick="reconnectCamera()">
+                    📷 重新連接
+                </button>
+            </div>
+            <div class="camera-container">
+                <img id="camera-stream" src="{{ url_for('video') }}" alt="Camera stream" class="camera-feed">
+            </div>
+        </section>
 
-    <div class="control-buttons">
-        <button class="operate-buttons" onclick="open_and_close('open')">👐 打開夾爪</button>
-        <button class="operate-buttons" onclick="open_and_close('close')">✊ 夾取物體</button>
-        <button class="operate-buttons" onclick="setLearningMode()">Learning Mode</button>
-        <button id="voice-btn" onclick="startVoiceInput()">🎤 語音輸入</button>
-        <button class="operate-buttons" onclick="pickObject('blue_block')">抓藍色方塊</button>
-        <button class="operate-buttons" onclick="pickObject('red_block')">抓紅色方塊</button>
-        <button class="operate-buttons" onclick="moveToHome()">🏠 回 Home</button>
+        <!-- Control Panel -->
+        <aside class="control-panel">
+            <!-- Robot Controls -->
+            <div class="control-group">
+                <h3>機械手臂控制</h3>
+                <div class="button-grid">
+                    <button class="btn btn-primary" onclick="open_and_close('open')">
+                        👐 打開夾爪
+                    </button>
+                    <button class="btn btn-primary" onclick="open_and_close('close')">
+                        ✊ 夾取物體
+                    </button>
+                    <button class="btn btn-warning" onclick="setLearningMode()">
+                        🎯 Learning Mode
+                    </button>
+                    <button class="btn btn-success" onclick="moveToHome()">
+                        � 回到起始位置
+                    </button>
+                </div>
+            </div>
 
-    </div>
-    
+            <!-- Object Detection -->
+            <div class="control-group">
+                <h3>物體檢測與抓取</h3>
+                <div class="button-grid">
+                    <button class="btn btn-info" onclick="pickObject('blue_block')">
+                        🔵 抓藍色方塊
+                    </button>
+                    <button class="btn btn-danger" onclick="pickObject('red_block')">
+                        🔴 抓紅色方塊
+                    </button>
+                </div>
+            </div>
 
-    <!-- JS -->
+            <!-- Voice Control -->
+            <div class="control-group">
+                <h3>語音控制</h3>
+                <button class="btn btn-voice" id="voice-btn" onclick="startVoiceInput()">
+                    � 語音輸入
+                </button>
+            </div>
+
+            <!-- Behavior Tree Visualization -->
+            <div class="control-group">
+                <h3>行為樹狀態</h3>
+                <div class="behavior-tree-display">
+                    <div class="tree-node active">根節點</div>
+                    <div class="tree-connections">
+                        <div class="tree-node">運動控制</div>
+                        <div class="tree-node">視覺處理</div>
+                        <div class="tree-node">決策邏輯</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- JavaScript -->
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
