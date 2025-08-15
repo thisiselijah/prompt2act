@@ -55,22 +55,22 @@ function open_and_close(direction) {
         body: JSON.stringify({ direction: direction })
     })
     .then(data => {
-        showToast(`✅ ${actionText}指令已發送`, 'info');
+        showToast(`${actionText}指令已發送`, 'info');
         console.log(data);
     })
     .catch(error => {
-        showToast(`❌ ${actionText}失敗: ${error.message}`, 'error');
+        showToast(`${actionText}失敗: ${error.message}`, 'error');
     });
 }
 
 function setLearningMode() {
     apiCall('/learning_mode')
     .then(data => {
-        showToast('🎯 已切換至 Learning Mode', 'info');
+        showToast('已切換至 Learning Mode', 'info');
         console.log(data);
     })
     .catch(error => {
-        showToast(`❌ Learning Mode 切換失敗: ${error.message}`, 'error');
+        showToast(`Learning Mode 切換失敗: ${error.message}`, 'error');
     });
 }
 
@@ -81,22 +81,22 @@ function pickObject(color) {
         body: JSON.stringify({ label: color })
     })
     .then(data => {
-        showToast(`🤖 正在抓取${colorText}方塊...`, 'info');
+        showToast(`正在抓取${colorText}方塊...`, 'info');
         console.log(data);
     })
     .catch(error => {
-        showToast(`❌ 抓取${colorText}方塊失敗: ${error.message}`, 'error');
+        showToast(`抓取${colorText}方塊失敗: ${error.message}`, 'error');
     });
 }
 
 function moveToHome() {
     apiCall('/move_to_home')
     .then(data => {
-        showToast('🏠 機械手臂正在回到起始位置', 'info');
+        showToast('機械手臂正在回到起始位置', 'info');
         console.log(data);
     })
     .catch(error => {
-        showToast(`❌ 回到起始位置失敗: ${error.message}`, 'error');
+        showToast(`回到起始位置失敗: ${error.message}`, 'error');
     });
 }
 
@@ -110,11 +110,11 @@ function reconnectCamera() {
     btn.disabled = true;
     btn.style.opacity = '0.6';
     
-    showToast('📷 正在重新連接攝影機...', 'info');
+    showToast('正在重新連接攝影機...', 'info');
     
     apiCall('/reconnect_camera')
     .then(data => {
-        showToast('✅ 攝影機重新連接成功', 'info');
+        showToast('攝影機重新連接成功', 'info');
         
         // Refresh camera stream with cache busting
         const img = document.getElementById('camera-stream');
@@ -125,7 +125,7 @@ function reconnectCamera() {
         updateBehaviorTreeStatus('camera-connected');
     })
     .catch(error => {
-        showToast(`❌ 攝影機重新連接失敗: ${error.message}`, 'error');
+        showToast(`攝影機重新連接失敗: ${error.message}`, 'error');
         updateBehaviorTreeStatus('camera-disconnected');
     })
     .finally(() => {
@@ -242,7 +242,7 @@ function renderBehaviorTree(data) {
     
     // Validate tree structure to prevent infinite recursion
     if (!validateTreeStructure(data.structure)) {
-        showToast('❌ 無效的樹狀結構', 'error');
+        showToast('無效的樹狀結構', 'error');
         return;
     }
     
@@ -278,7 +278,7 @@ function renderBehaviorTree(data) {
         }
     } catch (error) {
         console.error('Error rendering tree:', error);
-        showToast(`❌ 樹狀圖渲染失敗: ${error.message}`, 'error');
+        showToast(`樹狀圖渲染失敗: ${error.message}`, 'error');
     }
 }
 
@@ -502,7 +502,7 @@ function expandTree() {
     });
     
     updateTreeVisualization(treeData?.status);
-    showToast('🌳 樹狀圖已完全展開', 'info');
+    showToast('樹狀圖已完全展開', 'info');
 }
 
 function collapseTree() {
@@ -517,7 +517,7 @@ function collapseTree() {
     });
     
     updateTreeVisualization(treeData?.status);
-    showToast('📊 樹狀圖已收縮', 'info');
+    showToast('樹狀圖已收縮', 'info');
 }
 
 function centerTree() {
@@ -536,7 +536,7 @@ function centerTree() {
         .duration(750)
         .call(d3.zoom().transform, transform);
     
-    showToast('🎯 樹狀圖已置中', 'info');
+    showToast('樹狀圖已置中', 'info');
 }
 
 // Enhanced behavior tree update function
@@ -615,7 +615,7 @@ function getStatusClass(status) {
 
 // Voice input placeholder (implement based on your speech recognition setup)
 function startVoiceInput() {
-    showToast('🎤 語音輸入功能開發中...', 'warning');
+    showToast('語音輸入功能開發中...', 'warning');
     
     // Placeholder for voice recognition implementation
     // This would integrate with your speech recognition system
@@ -638,7 +638,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Show welcome message
     setTimeout(() => {
-        showToast('🤖 Niryo 控制台已就緒', 'info');
+        showToast('Niryo 控制台已就緒', 'info');
     }, 1000);
     
     // Initialize behavior tree polling
@@ -689,7 +689,7 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(initializeD3Tree, 100);
     });
     
-    console.log('🚀 Niryo Desktop Control Interface Initialized with D3.js Tree');
+    console.log('Niryo Desktop Control Interface Initialized with D3.js Tree');
     console.log('Keyboard shortcuts: Ctrl+H (Home), Ctrl+R (Reconnect), Ctrl+L (Learning Mode), Ctrl+E (Expand Tree), Ctrl+C (Collapse Tree)');
 });
 
