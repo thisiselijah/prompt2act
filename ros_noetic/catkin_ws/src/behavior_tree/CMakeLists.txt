@@ -57,6 +57,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_service_files(
   FILES
   helloworld.srv
+  AssembleBehaviorTree.srv
 )
 
 ## Generate actions in the 'action' folder
@@ -104,7 +105,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES behavior_tree
-#  CATKIN_DEPENDS rospy
+  CATKIN_DEPENDS rospy std_msgs message_runtime
 #  DEPENDS system_lib
 )
 
@@ -158,6 +159,10 @@ include_directories(
 
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
+
+find_package(Python3 3.8 EXACT REQUIRED COMPONENTS Interpreter)
+set(PYTHON_EXECUTABLE /usr/bin/python3.8)
+
 catkin_install_python(PROGRAMS
   scripts/behavior_tree_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

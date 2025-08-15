@@ -1,0 +1,22 @@
+<launch>
+
+
+    <!-- LLM Node (Python 3.9 shebang in script ensures correct interpreter) -->
+    <!-- <node name="llm_node" pkg="llm" type="llm_node.py" output="screen" respawn="true" />-->
+
+    <!-- Behavior Tree Node -->
+    <node name="behavior_tree_node" pkg="behavior_tree" type="behavior_tree_node.py" output="screen" respawn="true" />
+
+    <!-- Robot Control Node -->
+    <node name="robot_control_node" pkg="robot_control" type="robot_control_node.py" output="screen" respawn="false" />
+
+    <!-- YOLO Detection Node -->
+    <node name="yolo_detection_node" pkg="yolo_detection" type="yolo_detection_node.py" output="screen" respawn="true" />
+
+    <!-- Speech Recognition Node -->
+    <!-- <node name="speech_recognition_node" pkg="speech_recognition" type="speech_recognition_node.py" output="screen" respawn="true" /> -->
+
+    <!-- Web Interface (Flask) -->
+    <!-- <node name="web_interface_node" pkg="niryo_web_interface" type="scripts/web_interface_node.py" output="screen" respawn="true" /> -->
+    <node name="web_camera_node" pkg="niryo_web_interface" type="web_camera_node.py" output="screen"></node>
+</launch>

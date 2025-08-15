@@ -1,0 +1,8 @@
+# Request 部分
+string label
+float32 x
+float32 y
+float32 roll
+---
+# Response 部分
+string message

@@ -1,92 +1,652 @@
-body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    background-color: #f4f4f4;
-}
+/* Modern Desktop UI for Niryo Robot Control */
 
-.control-buttons {
-    margin-top: 20px;
-}
-
-.operate-buttons {
-    font-size: 20px;
-    padding: 10px 20px;
-    margin: 0 10px;
-    cursor: pointer;
-}
-
-
-
-#voice-btn {
-    font-size: 20px;
-    padding: 10px 20px;
-    margin: 0 10px;
-    cursor: pointer;
-    background-color: #d0ebff; /* 淡藍色 */
-    color: #003f5c;
-    border: 1px solid #90caff;
-    border-radius: 6px;
-}
-
-/*按鈕結束*/
-
-.camera-wrapper {
-    display: flex;
-    flex-direction: column;       /* 垂直排列標題 + 內容 */
-    align-items: center;          /* 水平置中整個內容 */
-    max-width: 1200px;
-    margin: 0 auto;               /* 置中畫面 */
-    padding: 30px;
+* {
     box-sizing: border-box;
+    margin: 0;
+    padding: 0;
 }
 
-/* 對 img 使用 id 單獨指定樣式 */
-#camera-stream {
-    border: 3px solid #555;
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f8f9fa;
+    min-height: 100vh;
+    color: #2d3748;
+}
+
+/* Top Navigation */
+.top-nav {
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.nav-brand h1 {
+    color: #4a5568;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.nav-status {
+    display: flex;
+    align-items: center;
+}
+
+.status-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #f7fafc;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+}
+
+.status-label {
+    font-weight: 500;
+    color: #4a5568;
+    font-size: 0.9rem;
+}
+
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.status-indicator.connected {
+    background: #10b981;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.status-indicator.disconnected {
+    background: #ef4444;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+.status-indicator.checking {
+    background: #f59e0b;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+.status-text {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #2d3748;
+}
+
+/* Main Content Layout */
+.main-content {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 2rem;
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+    min-height: calc(100vh - 80px);
+}
+
+/* Camera Section */
+.camera-section {
+    background: #ffffff;
     border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e2e8f0;
+}
+
+.camera-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.camera-header h2 {
+    color: #2d3748;
+    font-size: 1.5rem;
+    font-weight: 600;
 }
 
 .camera-container {
-    margin-top: 10px;
-    width: 1200px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #1f2937;
+    border-radius: 6px;
+    padding: 1rem;
+    min-height: 500px;
+}
+
+.camera-feed {
+    max-width: 100%;
+    max-height: 70vh;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Control Panel */
+.control-panel {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    padding: 30px;
-    box-sizing: border-box;
+    gap: 1.5rem;
 }
 
-
-.content-row {
-    display: flex;
-    flex-direction: row;
-    gap: 20px;                    /* 左右內容間距 */
-    align-items: flex-start;
-}
-
-.vertical-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.vertical-container h1 {
-    font-size: 28px;
-    margin-bottom: 10px;
-    text-align: center;
-    color: #333;
-}
-
-.behavior-tree-box {
-    width: 300px;
-    height: 480px;
-    background-color: transparent;
-    border: 3px solid black;
+.control-group {
+    background: #ffffff;
     border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    padding: 10px;
-    box-sizing: border-box;
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e2e8f0;
+}
+
+.control-group h3 {
+    color: #2d3748;
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+/* Button Styles */
+.btn {
+    padding: 0.75rem 1rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+.btn-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #2563eb;
+}
+
+.btn-secondary {
+    background: #6b7280;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #4b5563;
+}
+
+.btn-success {
+    background: #10b981;
+    color: white;
+}
+
+.btn-success:hover {
+    background: #059669;
+}
+
+.btn-warning {
+    background: #f59e0b;
+    color: white;
+}
+
+.btn-warning:hover {
+    background: #d97706;
+}
+
+.btn-info {
+    background: #06b6d4;
+    color: white;
+}
+
+.btn-info:hover {
+    background: #0891b2;
+}
+
+.btn-danger {
+    background: #ef4444;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+.btn-voice {
+    background: #8b5cf6;
+    color: white;
+    width: 100%;
+}
+
+.btn-voice:hover {
+    background: #7c3aed;
+}
+
+.button-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.button-grid .btn {
+    width: 100%;
+}
+
+/* Behavior Tree Visualization */
+/* D3.js Tree Visualization Styles */
+.d3-tree-container {
+    position: relative;
+    width: 100%;
+    height: 400px;
+    background: #f8fafc;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    overflow: hidden;
+}
+
+.tree-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.btn-small {
+    font-size: 0.75rem;
+    padding: 0.4rem 0.8rem;
+}
+
+#tree-svg {
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+}
+
+#tree-svg:active {
+    cursor: grabbing;
+}
+
+/* Tree Node Styles */
+.tree-node-shape {
+    stroke-width: 2;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tree-node-shape:hover {
+    stroke-width: 3;
+}
+
+/* Node status colors */
+.node-success {
+    fill: #10b981;
+    stroke: #059669;
+}
+
+.node-running {
+    fill: #f59e0b;
+    stroke: #d97706;
+    animation: pulseNode 2s infinite;
+}
+
+.node-failure {
+    fill: #ef4444;
+    stroke: #dc2626;
+}
+
+.node-invalid {
+    fill: #9ca3af;
+    stroke: #6b7280;
+    opacity: 0.6;
+}
+
+.node-sequence {
+    fill: #3b82f6;
+    stroke: #2563eb;
+}
+
+.node-selector {
+    fill: #f59e0b;
+    stroke: #d97706;
+}
+
+.node-parallel {
+    fill: #8b5cf6;
+    stroke: #7c3aed;
+}
+
+.node-behavior {
+    fill: #10b981;
+    stroke: #059669;
+}
+
+@keyframes pulseNode {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.1);
+    }
+}
+
+/* Tree Link Styles */
+.tree-link {
+    fill: none;
+    stroke: #9ca3af;
+    stroke-width: 2;
+    transition: all 0.2s ease;
+}
+
+.tree-link.active {
+    stroke: #3b82f6;
+    stroke-width: 3;
+}
+
+.tree-link.success {
+    stroke: #10b981;
+    stroke-width: 3;
+}
+
+.tree-link.running {
+    stroke: #f59e0b;
+    stroke-width: 3;
+    stroke-dasharray: 5,5;
+    animation: dashMove 2s linear infinite;
+}
+
+.tree-link.failure {
+    stroke: #ef4444;
+    stroke-width: 3;
+}
+
+@keyframes dashMove {
+    0% { stroke-dashoffset: 0; }
+    100% { stroke-dashoffset: 20; }
+}
+
+/* Node Text Styles */
+.node-text {
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    fill: #374151;
+    text-anchor: middle;
+    pointer-events: none;
+}
+
+.node-type-text {
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 9px;
+    fill: #6b7280;
+    text-anchor: middle;
+    pointer-events: none;
+}
+
+/* Tree Legend */
+.tree-legend {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 6px;
+    padding: 8px;
+    color: #374151;
+    font-size: 11px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 3px 0;
+}
+
+.legend-status {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.legend-status.success {
+    background: #10b981;
+}
+
+.legend-status.running {
+    background: #f59e0b;
+    animation: pulseNode 2s infinite;
+}
+
+.legend-status.failure {
+    background: #ef4444;
+}
+
+.legend-status.invalid {
+    background: #9ca3af;
+}
+
+/* Tooltip for nodes */
+.tree-tooltip {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 1000;
+    max-width: 200px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Loading state */
+.tree-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #6b7280;
+    font-size: 14px;
+}
+
+.tree-loading::before {
+    content: "🌳";
+    font-size: 24px;
+    margin-right: 10px;
+    animation: pulse 2s infinite;
+}
+
+/* Legacy behavior tree styles (keep for fallback) */
+.behavior-tree-display {
+    padding: 20px;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    min-height: 300px;
+    overflow: auto;
+    font-family: 'Roboto Mono', monospace;
+}
+
+.tree-node-container {
+    margin: 5px 0;
+}
+
+.tree-node {
+    display: inline-block;
+    padding: 8px 16px;
+    margin: 2px;
+    border-radius: 4px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    color: #374151;
+    font-size: 12px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.tree-node:hover {
+    background: #f3f4f6;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tree-children {
+    margin-left: 30px;
+    border-left: 2px solid #e5e7eb;
+    padding-left: 15px;
+    position: relative;
+}
+
+.tree-children::before {
+    content: '';
+    position: absolute;
+    left: -2px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #d1d5db;
+}
+
+/* Status-based styling */
+.status-success {
+    background: #d1fae5;
+    border-color: #10b981;
+    color: #065f46;
+}
+
+.status-running {
+    background: #fef3c7;
+    border-color: #f59e0b;
+    color: #92400e;
+    animation: pulse 2s infinite;
+}
+
+.status-failure {
+    background: #fee2e2;
+    border-color: #ef4444;
+    color: #991b1b;
+}
+
+.status-invalid {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+    color: #6b7280;
+    opacity: 0.6;
+}
+
+/* Legacy tree styling for fallback */
+.tree-node.active {
+    background: #dbeafe;
+    border-color: #3b82f6;
+    color: #1e40af;
+}
+
+/* Toast Notifications */
+.toast-container {
+    position: fixed;
+    top: 100px;
+    right: 20px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.toast {
+    background: #ffffff;
+    border-radius: 6px;
+    padding: 1rem 1.5rem;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    border-left: 4px solid #10b981;
+    transform: translateX(350px);
+    transition: transform 0.3s ease;
+    max-width: 300px;
+    border: 1px solid #e5e7eb;
+}
+
+.toast.show {
+    transform: translateX(0);
+}
+
+.toast.error {
+    border-left-color: #ef4444;
+}
+
+.toast.warning {
+    border-left-color: #f59e0b;
+}
+
+.toast.info {
+    border-left-color: #3b82f6;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .main-content {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+    
+    .control-panel {
+        order: -1;
+    }
+    
+    .button-grid {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .top-nav {
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1rem;
+    }
+    
+    .main-content {
+        padding: 1rem;
+        gap: 1rem;
+    }
+    
+    .camera-container {
+        min-height: 300px;
+    }
+    
+    .button-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 

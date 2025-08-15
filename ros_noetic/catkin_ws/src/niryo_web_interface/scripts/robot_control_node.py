@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 
 import rospy
 from std_msgs.msg import String
@@ -6,7 +6,7 @@ from pyniryo import NiryoRobot
 from pyniryo import PoseObject
 
 # --- 建立與 Niryo One 的連線 ---
-niryo = NiryoRobot("192.168.232.26")  # 請改成你的 Niryo IP
+niryo = NiryoRobot("10.10.10.10")  # 請改成你的 Niryo IP
 
 print("執行自動校正...")
 niryo.calibrate_auto()

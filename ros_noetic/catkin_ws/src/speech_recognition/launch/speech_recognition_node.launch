@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- LLM Node Configuration -->
+    <node name="llm_node" pkg="llm" type="llm_node.py" output="screen">
+        <!-- Provider Selection: openai, ollama, huggingface, gemini -->
+        <param name="provider" value="openai" />
+        
+        <!-- OpenAI Configuration -->
+        <param name="openai_api_key" value="$(optenv OPENAI_API_KEY)" />
+        <param name="openai_model" value="gpt-3.5-turbo" />
+        <param name="max_tokens" value="1000" />
+        <param name="temperature" value="0.7" />
+        
+        <!-- Google Gemini Configuration -->
+        <param name="gemini_api_key" value="$(optenv GEMINI_API_KEY)" />
+        <param name="gemini_model" value="gemini-2.0-flash" />
+        <param name="max_output_tokens" value="1000" />
+        <param name="top_p" value="0.95" />
+        <param name="top_k" value="40" />
+        
+        <!-- Default query prompt for service calls -->
+        <param name="query_prompt" value="Hello, how are you?" />
+    </node>
+</launch>

@@ -1,0 +1,5 @@
+baseURL = "https://thisiselijah.github.io/prompt2act/"
+languageCode = 'en-us'
+title = 'Docs of Prompt2Act'
+publishDir = "../docs"
+theme = "hugo-book"
