@@ -2,16 +2,17 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>https://thisiselijah.github.io/prompt2act/docs/</loc>
-    <lastmod>2025-08-15T22:07:38+08:00</lastmod>
-  </url><url>
-    <loc>https://thisiselijah.github.io/prompt2act/</loc>
-    <lastmod>2025-08-15T22:07:38+08:00</lastmod>
-  </url><url>
     <loc>https://thisiselijah.github.io/prompt2act/docs/quickstart/</loc>
-    <lastmod>2025-08-15T22:07:38+08:00</lastmod>
+  </url><url>
+    <loc>https://thisiselijah.github.io/prompt2act/docs/ros1-commands/</loc>
+  </url><url>
+    <loc>https://thisiselijah.github.io/prompt2act/docs/workflow/</loc>
   </url><url>
     <loc>https://thisiselijah.github.io/prompt2act/categories/</loc>
+  </url><url>
+    <loc>https://thisiselijah.github.io/prompt2act/docs/</loc>
+  </url><url>
+    <loc>https://thisiselijah.github.io/prompt2act/</loc>
   </url><url>
     <loc>https://thisiselijah.github.io/prompt2act/tags/</loc>
   </url>
