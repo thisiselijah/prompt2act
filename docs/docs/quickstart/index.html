@@ -8,25 +8,55 @@
   
   #
   
+
+
+Clone the project and go to the directory: prompt2act.
+
+$ git clone https://github.com/thisiselijah/prompt2act.git &amp;&amp; cd prompt2act/ros_noetic/
+
+Build the docker image.
+
+$ docker build -t ros-noetic-dev .
+
+Run the container.
+
+$ docker run -it --rm --name &lt;container_name&gt; --net=host --device=/dev/video0:/dev/video0 -v ./catkin_ws/src:/root/catkin_ws/src ros-noetic-
+
+# for test
+$ docker run -it --rm -v ./catkin_ws/src:/root/catkin_ws/src ros-noetic-dev
+
+Use  zellij as terminal multiplexer.
+
+$ zellij
+
+Build the ROS environments.
+
+$ source devel/setup.bash &amp;&amp; catkin_make
+
+Set llm API key
+
+export GEMIINI_API_KEY = &#34;&lt;YOUR API KEY&gt;&#34;
+
+Run the system
+
+roslaunch launcher all_nodes.launch 
 ">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
 <meta name="color-scheme" content="light dark"><meta property="og:url" content="https://thisiselijah.github.io/prompt2act/docs/quickstart/">
   <meta property="og:site_name" content="Docs of Prompt2Act">
   <meta property="og:title" content="Quickstart">
-  <meta property="og:description" content="Quickstart #">
+  <meta property="og:description" content="Quickstart # Clone the project and go to the directory: prompt2act. $ git clone https://github.com/thisiselijah/prompt2act.git &amp;&amp; cd prompt2act/ros_noetic/ Build the docker image. $ docker build -t ros-noetic-dev . Run the container. $ docker run -it --rm --name &lt;container_name&gt; --net=host --device=/dev/video0:/dev/video0 -v ./catkin_ws/src:/root/catkin_ws/src ros-noetic- # for test $ docker run -it --rm -v ./catkin_ws/src:/root/catkin_ws/src ros-noetic-dev Use zellij as terminal multiplexer. $ zellij Build the ROS environments. $ source devel/setup.bash &amp;&amp; catkin_make Set llm API key export GEMIINI_API_KEY = &#34;&lt;YOUR API KEY&gt;&#34; Run the system roslaunch launcher all_nodes.launch">
   <meta property="og:locale" content="en_us">
   <meta property="og:type" content="article">
     <meta property="article:section" content="docs">
-    <meta property="article:published_time" content="2025-08-15T22:07:38+08:00">
-    <meta property="article:modified_time" content="2025-08-15T22:07:38+08:00">
 <title>Quickstart | Docs of Prompt2Act</title>
 <link rel="icon" href="/prompt2act/favicon.png" >
 <link rel="manifest" href="/prompt2act/manifest.json">
 <link rel="canonical" href="https://thisiselijah.github.io/prompt2act/docs/quickstart/">
 <link rel="stylesheet" href="/prompt2act/book.min.ce742184041b67827be505801d71b6b40c09608dfb292033ea54dbbc1d71a174.css" integrity="sha256-znQhhAQbZ4J75QWAHXG2tAwJYI37KSAz6lTbvB1xoXQ=" crossorigin="anonymous">
   <script defer src="/prompt2act/fuse.min.js"></script>
-  <script defer src="/prompt2act/en.search.min.55c1c50d119742b73c98e988ab5a3b788310e863060ff8fbeb8fe8d65c7b1319.js" integrity="sha256-VcHFDRGXQrc8mOmIq1o7eIMQ6GMGD/j764/o1lx7Exk=" crossorigin="anonymous"></script>
+  <script defer src="/prompt2act/en.search.min.632fef31e55956331ad41c86bfdf9bf1eb90cf3736ea99710f0110dd209c28e7.js" integrity="sha256-Yy/vMeVZVjMa1ByGv9&#43;b8euQzzc26plxDwEQ3SCcKOc=" crossorigin="anonymous"></script>
 <!--
 Made with Book Theme
 https://github.com/alex-shpak/hugo-book
@@ -80,6 +110,32 @@ https://github.com/alex-shpak/hugo-book
 
   
     <a href="/prompt2act/docs/quickstart/" class="active">Quickstart</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/prompt2act/docs/ros1-commands/" class="">Ros1 Commands</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/prompt2act/docs/workflow/" class="">Workflow</a>
   
 
         </li>
@@ -152,7 +208,38 @@ https://github.com/alex-shpak/hugo-book
   <a class="anchor" href="#quickstart">#</a>
   
 </h1>
-</article>
+<ol>
+<li>Clone the project and go to the directory: <code>prompt2act</code>.</li>
+</ol>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>$ git clone https://github.com/thisiselijah/prompt2act.git <span style="color:#f92672">&amp;&amp;</span> cd prompt2act/ros_noetic/
+</span></span></code></pre></div><ol start="3">
+<li>Build the docker image.</li>
+</ol>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>$ docker build -t ros-noetic-dev .
+</span></span></code></pre></div><ol start="4">
+<li>Run the container.</li>
+</ol>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>$ docker run -it --rm --name &lt;container_name&gt; --net<span style="color:#f92672">=</span>host --device<span style="color:#f92672">=</span>/dev/video0:/dev/video0 -v ./catkin_ws/src:/root/catkin_ws/src ros-noetic-
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># for test</span>
+</span></span><span style="display:flex;"><span>$ docker run -it --rm -v ./catkin_ws/src:/root/catkin_ws/src ros-noetic-dev
+</span></span></code></pre></div><ol start="5">
+<li>Use  <code>zellij</code> as terminal multiplexer.</li>
+</ol>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>$ zellij
+</span></span></code></pre></div><ol start="6">
+<li>Build the ROS environments.</li>
+</ol>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>$ source devel/setup.bash <span style="color:#f92672">&amp;&amp;</span> catkin_make
+</span></span></code></pre></div><ol start="7">
+<li>Set llm API key</li>
+</ol>
+<pre tabindex="0"><code>export GEMIINI_API_KEY = &#34;&lt;YOUR API KEY&gt;&#34;
+</code></pre><ol start="8">
+<li>Run the system</li>
+</ol>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>roslaunch launcher all_nodes.launch 
+</span></span></code></pre></div></article>
  
       
 
@@ -172,6 +259,20 @@ https://github.com/alex-shpak/hugo-book
 
   
   
+  
+  <div class="flex flex-wrap justify-between">
+    <span>
+    
+    </span>
+    <span>
+    
+      <a href="/prompt2act/docs/ros1-commands/" class="flex align-center book-icon">
+        <span>Ros1 Commands</span>
+        <img src="/prompt2act/svg/forward.svg" class="book-icon" alt="Next" title="Ros1 Commands" />
+      </a>
+    
+    </span>
+  </div>
   
 
 
