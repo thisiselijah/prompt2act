@@ -37,16 +37,13 @@ class DetectObjects(py_trees.behaviour.Behaviour):
         self.logger = py_trees.logging.Logger(name)
         self.detected_objects = []
         self.subscriber = rospy.Subscriber('/yolo_detected_targets', String, self._detection_callback)
-        # blackboard client will be initialized in setup()
-        self.blackboard = None
+        # Initialize blackboard client in __init__ where attach_blackboard_client is available
+        self.blackboard = self.attach_blackboard_client(name=self.name)
+        self.blackboard.register_key(key="detected_objects", access=py_trees.common.Access.WRITE)
         
     def setup(self, timeout=None):
         """Setup the YOLO detection subscriber"""
         try:
-            # Initialize blackboard client now that the behavior is part of a tree
-            self.blackboard = self.attach_blackboard_client(name=self.name)
-            self.blackboard.register_key(key="detected_objects", access=py_trees.common.Access.WRITE)
-            
             # Subscriber is already created in __init__, just return success
             self.logger.info("YOLO detection subscriber ready")
             return True
@@ -98,17 +95,14 @@ class PickUp(py_trees.behaviour.Behaviour):
         self.logger = py_trees.logging.Logger(name)
         self.robot_service = None
         self.picked_object = None
-        # blackboard client will be initialized in setup()
-        self.blackboard = None
+        # Initialize blackboard client in __init__ where attach_blackboard_client is available
+        self.blackboard = self.attach_blackboard_client(name=self.name)
+        self.blackboard.register_key(key="detected_objects", access=py_trees.common.Access.READ)
+        self.blackboard.register_key(key="picked_object", access=py_trees.common.Access.WRITE)
         
     def setup(self, timeout=None):
         """Setup the robot control service client"""
         try:
-            # Initialize blackboard client now that the behavior is part of a tree
-            self.blackboard = self.attach_blackboard_client(name=self.name)
-            self.blackboard.register_key(key="detected_objects", access=py_trees.common.Access.READ)
-            self.blackboard.register_key(key="picked_object", access=py_trees.common.Access.WRITE)
-            
             rospy.wait_for_service('/arm_command', timeout=5.0)
             self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
             self.logger.info("Robot control service connected")
@@ -175,16 +169,13 @@ class PlaceDown(py_trees.behaviour.Behaviour):
         self.place_x = place_x
         self.place_y = place_y
         self.place_z = place_z
-        # blackboard client will be initialized in setup()
-        self.blackboard = None
+        # Initialize blackboard client in __init__ where attach_blackboard_client is available
+        self.blackboard = self.attach_blackboard_client(name=self.name)
+        self.blackboard.register_key(key="picked_object", access=py_trees.common.Access.READ)
         
     def setup(self, timeout=None):
         """Setup the robot control service client"""
         try:
-            # Initialize blackboard client now that the behavior is part of a tree
-            self.blackboard = self.attach_blackboard_client(name=self.name)
-            self.blackboard.register_key(key="picked_object", access=py_trees.common.Access.READ)
-            
             rospy.wait_for_service('/arm_command', timeout=5.0)
             self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
             self.logger.info("Robot control service connected")
