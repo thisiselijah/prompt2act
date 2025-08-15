@@ -544,14 +544,17 @@ class LLMNode:
         return has_quotes and has_colons
     
     def _clean_response_text(self, response: str) -> str:
-        """Clean response text"""
+        """Clean response text while preserving JSON formatting"""
         try:
             # Remove common prefixes/suffixes that LLMs might add
             response = re.sub(r'^.*?(?=\{)', '', response, flags=re.DOTALL)  # Remove text before first {
             response = re.sub(r'\}.*?$', '}', response, flags=re.DOTALL)     # Remove text after last }
             
-            # Normalize whitespace
-            response = re.sub(r'\s+', ' ', response)
+            # Only normalize excessive whitespace, but preserve reasonable formatting
+            # Remove leading/trailing whitespace from each line, but keep line breaks
+            lines = response.split('\n')
+            cleaned_lines = [line.strip() for line in lines if line.strip()]
+            response = '\n'.join(cleaned_lines)
             
             return response.strip()
             
@@ -559,25 +562,31 @@ class LLMNode:
             return response.strip() if response else ""
     
     def _sanitize_json_for_parsing(self, json_str: str) -> str:
-        """Sanitize JSON string for parsing"""
+        """Sanitize JSON string for parsing while preserving formatting"""
         try:
             # Ensure we're working with a proper string
             if not isinstance(json_str, str):
                 json_str = str(json_str)
             
-            # Fix common JSON formatting issues
+            # Fix common JSON formatting issues without destroying formatting
             # Replace single quotes with double quotes (but not inside strings)
             json_str = re.sub(r"(?<!\\)'([^']*?)(?<!\\)'", r'"\1"', json_str)
             
             # Fix trailing commas before closing braces/brackets
             json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
             
-            # Ensure proper spacing around colons and commas
-            json_str = re.sub(r':\s*', ': ', json_str)
-            json_str = re.sub(r',\s*', ', ', json_str)
-            
-            # Clean up excessive whitespace
-            json_str = re.sub(r'\s+', ' ', json_str)
+            # Validate and pretty-format if possible
+            try:
+                import json
+                parsed = json.loads(json_str)
+                # Re-format with proper indentation
+                json_str = json.dumps(parsed, indent=2, ensure_ascii=False)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                # If parsing fails, just do minimal cleaning
+                # Ensure proper spacing around colons and commas only if not already formatted
+                if not re.search(r'\n\s+', json_str):  # Check if already formatted
+                    json_str = re.sub(r':\s*', ': ', json_str)
+                    json_str = re.sub(r',\s*', ', ', json_str)
             
             return json_str.strip()
             

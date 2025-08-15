@@ -154,7 +154,7 @@ class LLMProvider(ABC):
         pass
     
     def _sanitize_for_encoding(self, text: str) -> str:
-        """Sanitize text for cross-platform encoding compatibility"""
+        """Sanitize text for cross-platform encoding compatibility while preserving formatting"""
         try:
             if not isinstance(text, str):
                 text = str(text)
