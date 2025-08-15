@@ -31,6 +31,8 @@ from behavior_tree.srv import AssembleBehaviorTree, AssembleBehaviorTreeRequest
 from llm.srv import LLMQuery, LLMQueryResponse, LLMJsonQuery, LLMJsonQueryResponse, GenerateBehaviorTree, GenerateBehaviorTreeResponse, LLMStatus, LLMStatusResponse
 import json
 import os
+import re
+import unicodedata
 
 # 加入 scripts 資料夾路徑，確保 import 從原本腳本所在目錄載入
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -406,53 +408,76 @@ class LLMNode:
                 rospy.logerr(f"Generated response is not valid JSON: {e}")
                 rospy.logerr(f"Original response length: {len(response)} chars")
                 rospy.logerr(f"Cleaned response length: {len(cleaned_response)} chars")
-                
+
                 # Log Unicode issues specifically
-                unicode_chars = [char for char in cleaned_response if ord(char) > 127]
+                try:
+                    unicode_chars = [char for char in cleaned_response if ord(char) > 127]
+                except Exception:
+                    unicode_chars = []
+
                 if unicode_chars:
                     rospy.logwarn(f"Unicode characters detected: {set(unicode_chars)}")
-                
+
                 # Show first 200 chars of each for debugging
                 rospy.logerr(f"Original response (first 200 chars): {response[:200]}")
                 rospy.logerr(f"Cleaned response (first 200 chars): {cleaned_response[:200]}")
-                
+
                 # Try one more time with aggressive cleaning
                 try:
                     rospy.loginfo("Attempting aggressive JSON cleanup due to parsing failure")
                     fallback_cleaned = self._aggressive_json_cleanup(cleaned_response)
                     rospy.loginfo(f"Aggressive cleanup result length: {len(fallback_cleaned)} chars")
                     rospy.loginfo(f"Aggressive cleanup result (first 200 chars): {fallback_cleaned[:200]}")
-                    
+
+                    # If aggressive cleanup produced an error-like message (often due to encoding exceptions), reject it
+                    if isinstance(fallback_cleaned, str) and re.search(r'(?i)ascii codec|codec can\'t|encode character|\\bu201d\\b|traceback', fallback_cleaned[:200]):
+                        rospy.logerr(f"Aggressive cleanup produced an error-like string instead of JSON: {fallback_cleaned[:200]}")
+                        return GenerateBehaviorTreeResponse(
+                            success=False,
+                            behavior_tree_json="",
+                            error_message="Failed to recover valid JSON from LLM response (encoding error message returned)."
+                        )
+
+                    # Validate structure before attempting to parse to avoid Extra data errors
+                    if not self._is_valid_json_structure(fallback_cleaned):
+                        rospy.logerr("Aggressive cleanup result does not look like JSON; aborting parse")
+                        rospy.logerr(f"Aggressive cleanup preview: {fallback_cleaned[:200]}")
+                        return GenerateBehaviorTreeResponse(
+                            success=False,
+                            behavior_tree_json="",
+                            error_message="Aggressive cleanup did not yield valid JSON structure."
+                        )
+
                     parsed_json = json.loads(fallback_cleaned)
                     rospy.loginfo(f"Successfully parsed JSON after aggressive cleanup")
-                    
+
                     if auto_assemble:
                         assembly_success, assembly_message = self._call_behavior_tree_assembly(fallback_cleaned)
                         return GenerateBehaviorTreeResponse(
-                            success=True, 
-                            behavior_tree_json=fallback_cleaned, 
-                            error_message=f"JSON parsed after cleanup. Assembly: {assembly_message}" if not assembly_success else ""
+                            success=True if assembly_success else False,
+                            behavior_tree_json=fallback_cleaned if assembly_success else "",
+                            error_message="" if assembly_success else assembly_message
                         )
                     else:
                         return GenerateBehaviorTreeResponse(
-                            success=True, 
-                            behavior_tree_json=fallback_cleaned, 
+                            success=True,
+                            behavior_tree_json=fallback_cleaned,
                             error_message="JSON parsed after aggressive cleanup"
                         )
-                        
+
                 except json.JSONDecodeError as fallback_error:
                     rospy.logerr(f"Fallback JSON parsing also failed: {fallback_error}")
                     rospy.logerr(f"Fallback result (first 200 chars): {fallback_cleaned[:200] if 'fallback_cleaned' in locals() else 'N/A'}")
                     return GenerateBehaviorTreeResponse(
-                        success=False, 
-                        behavior_tree_json="", 
+                        success=False,
+                        behavior_tree_json="",
                         error_message=f"Invalid JSON generated: {str(e)}. Fallback also failed: {str(fallback_error)}"
                     )
                 except Exception as cleanup_error:
                     rospy.logerr(f"Aggressive cleanup threw exception: {cleanup_error}")
                     return GenerateBehaviorTreeResponse(
-                        success=False, 
-                        behavior_tree_json="", 
+                        success=False,
+                        behavior_tree_json="",
                         error_message=f"Invalid JSON generated: {str(e)}. Cleanup failed: {str(cleanup_error)}"
                     )
                 
