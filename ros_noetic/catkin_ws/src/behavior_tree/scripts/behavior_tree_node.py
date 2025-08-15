@@ -39,19 +39,32 @@ class DetectObjects(py_trees.behaviour.Behaviour):
         super(DetectObjects, self).__init__(name)
         self.logger = py_trees.logging.Logger(name)
         self.detected_objects = []
-        self.subscriber = rospy.Subscriber('/yolo_detected_targets', String, self._detection_callback)
+        self.subscriber = None
         # Initialize blackboard for py_trees 0.7.x compatibility
         self.blackboard = py_trees.blackboard.Blackboard()
         
     def setup(self, timeout=None):
         """Setup the YOLO detection subscriber"""
         try:
-            # Subscriber is already created in __init__, just return success
-            self.logger.info("YOLO detection subscriber ready")
+            # Create subscriber only when behavior tree is actively running
+            if not self.subscriber:
+                self.subscriber = rospy.Subscriber('/yolo_detected_targets', String, self._detection_callback)
+                self.logger.info("YOLO detection subscriber created")
             return True
         except Exception as e:
             self.logger.error(f"Failed to setup YOLO detection: {e}")
             return False
+    
+    def terminate(self, new_status):
+        """Clean up subscriber when behavior terminates"""
+        try:
+            if self.subscriber:
+                self.subscriber.unregister()
+                self.subscriber = None
+                self.logger.info("YOLO detection subscriber unregistered")
+        except Exception as e:
+            self.logger.error(f"Error during DetectObjects cleanup: {e}")
+        super(DetectObjects, self).terminate(new_status)
         
     def _detection_callback(self, msg):
         """Callback to receive YOLO detection data"""
@@ -666,6 +679,30 @@ def hello_world_service():
     rospy.loginfo("Hello World service started")
     return service
 
+def cleanup_behavior_tree(tree):
+    """
+    Properly clean up all behaviors in the tree
+    Args:
+        tree: py_trees.trees.BehaviourTree object
+    """
+    if not tree or not tree.root:
+        return
+    
+    try:
+        # Iterate through all behaviors and call terminate method
+        for behavior in tree.root.iterate():
+            if hasattr(behavior, 'terminate'):
+                behavior.terminate(py_trees.common.Status.INVALID)
+        
+        # Call terminate on root as well
+        if hasattr(tree.root, 'terminate'):
+            tree.root.terminate(py_trees.common.Status.INVALID)
+            
+        rospy.loginfo("Behavior tree cleanup completed")
+        
+    except Exception as e:
+        rospy.logerr(f"Error during behavior tree cleanup: {e}")
+
 # Global variables to store current behavior tree and JSON publisher
 current_behavior_tree = None
 json_publisher = None
@@ -736,6 +773,9 @@ def main():
                     if json_publisher and JSON_SERIALIZATION_AVAILABLE:
                         json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
                     
+                    # Properly clean up all behaviors before clearing tree
+                    cleanup_behavior_tree(current_behavior_tree)
+                    
                     # Clean up current tree and reset counter
                     current_behavior_tree = None
                     current_tick_count = 0
@@ -748,6 +788,9 @@ def main():
                     # Publish final status
                     if json_publisher and JSON_SERIALIZATION_AVAILABLE:
                         json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
+                    
+                    # Properly clean up all behaviors before clearing tree
+                    cleanup_behavior_tree(current_behavior_tree)
                     
                     # Clean up current tree and reset counter
                     current_behavior_tree = None
@@ -768,6 +811,9 @@ def main():
                         if json_publisher and JSON_SERIALIZATION_AVAILABLE:
                             json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
                         
+                        # Properly clean up all behaviors before clearing tree
+                        cleanup_behavior_tree(current_behavior_tree)
+                        
                         # Clean up stuck tree and reset counter
                         current_behavior_tree = None
                         current_tick_count = 0
@@ -785,6 +831,7 @@ def main():
                     # Check if invalid status persists for too long
                     if current_tick_count > 100:  # Reset after many invalid ticks
                         rospy.logerr("Resetting behavior tree due to persistent invalid status")
+                        cleanup_behavior_tree(current_behavior_tree)
                         current_behavior_tree = None
                         current_tick_count = 0
             
@@ -794,8 +841,9 @@ def main():
     except KeyboardInterrupt:
         rospy.loginfo("Behavior Tree Node shutting down")
     finally:
-        # Clean shutdown (py_trees doesn't have shutdown method)
+        # Clean shutdown with proper cleanup
         if current_behavior_tree:
+            cleanup_behavior_tree(current_behavior_tree)
             current_behavior_tree = None
         rospy.loginfo(f"Behavior tree node completed {current_tick_count} ticks")
 
