@@ -49,6 +49,7 @@ Task description: {task_description}
 
 IMPORTANT: Return ONLY valid JSON object with proper formatting, no explanations or additional text.
 Use double quotes for all strings, proper escaping, and ensure cross-platform compatibility.
+CRITICAL: Use only standard ASCII characters and double quotes (") - no smart quotes, em dashes, or Unicode characters.
 
 Requirements:
 1. Root node must be 'sequence' or 'selector'
@@ -58,9 +59,10 @@ Requirements:
 5. Composite nodes (sequence/selector) must have 'children' array
 6. Leaf nodes (behavior actions) should NOT have 'children' field
 7. For 'place_down' behavior, you can optionally include 'place_x', 'place_y', 'place_z' parameters
-8. Use only double quotes (") for strings, no single quotes
+8. Use only standard double quotes (") for strings, no smart quotes like " or "
 9. No trailing commas
 10. All string values must be properly escaped
+11. Use only ASCII characters - no Unicode characters that could cause encoding issues
 
 Available behavior types:
 - detect_objects: For detecting objects in the environment using YOLO vision
@@ -345,6 +347,25 @@ class LLMNode:
                 rospy.loginfo("Generating behavior tree JSON...")
                 response = self.current_provider.generate_json_response(behavior_tree_prompt)
                 rospy.loginfo("JSON generation successful")
+                
+                # Early validation: Check if response is an error message about encoding
+                if response and len(response) < 500:  # Error messages are typically short
+                    encoding_error_patterns = [
+                        r"ascii.*codec.*can't.*encode",
+                        r"Error:.*codec.*can't.*encode", 
+                        r"Google Gemini.*API.*error.*codec",
+                        r"ordinal not in range.*128"
+                    ]
+                    
+                    for pattern in encoding_error_patterns:
+                        if re.search(pattern, response, re.IGNORECASE):
+                            rospy.logerr(f"Provider returned encoding error instead of JSON: {response}")
+                            return GenerateBehaviorTreeResponse(
+                                success=False,
+                                behavior_tree_json="",
+                                error_message=f"Provider encoding error: {response}"
+                            )
+                
             except Exception as generation_error:
                 rospy.logerr(f"JSON generation failed: {generation_error}")
                 return GenerateBehaviorTreeResponse(
@@ -817,7 +838,12 @@ class LLMNode:
                 r"\\u201[cd]",  # Smart quotes unicode codes
                 r"UnicodeEncodeError",
                 r"UnicodeDecodeError",
-                r"Traceback.*most recent call"
+                r"Traceback.*most recent call",
+                r"Google Gemini.*API.*error",  # Specific provider errors
+                r"OpenAI.*API.*error",  # OpenAI provider errors
+                r"Error:.*codec.*can't.*encode",  # Windows VM specific pattern
+                r"position \d+:.*ordinal not in range",  # Encoding position errors
+                r"API.*error.*codec.*can't.*encode"  # API-specific encoding errors
             ]
             
             for pattern in error_patterns:
