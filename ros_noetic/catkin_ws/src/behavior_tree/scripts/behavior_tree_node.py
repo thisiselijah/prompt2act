@@ -60,13 +60,29 @@ class DetectObjects(py_trees.behaviour.Behaviour):
     def update(self):
         """Check if objects are detected"""
         if self.detected_objects:
-            self.logger.info(f"Objects detected: {len(self.detected_objects)} items")
+            self.logger.info(f"✅ Objects detected: {len(self.detected_objects)} items")
+            
+            # Print detailed information about detected objects
+            for i, obj in enumerate(self.detected_objects):
+                obj_info = f"  Object {i+1}: "
+                if 'class' in obj:
+                    obj_info += f"class='{obj['class']}' "
+                if 'x' in obj and 'y' in obj:
+                    obj_info += f"position=({obj['x']:.3f}, {obj['y']:.3f}) "
+                if 'confidence' in obj:
+                    obj_info += f"confidence={obj['confidence']:.2f} "
+                if 'roll' in obj:
+                    obj_info += f"roll={obj['roll']:.3f}"
+                self.logger.info(obj_info)
+            
             # Store detection data in blackboard for other behaviors to use
             self.blackboard = self.attach_blackboard_client(name=self.name)
             self.blackboard.detected_objects = self.detected_objects
             return py_trees.common.Status.SUCCESS
         else:
-            self.logger.info("No objects detected, continuing to search...")
+            self.logger.info("🔍 No objects detected, continuing to search...")
+            # Return RUNNING to keep the detection behavior active
+            # This allows the behavior tree to continue and retry detection
             return py_trees.common.Status.RUNNING
 
 class PickUp(py_trees.behaviour.Behaviour):
@@ -92,7 +108,7 @@ class PickUp(py_trees.behaviour.Behaviour):
     def update(self):
         """Execute pick up behavior"""
         if not self.robot_service:
-            self.logger.error("Robot service not available")
+            self.logger.error("❌ Robot service not available")
             return py_trees.common.Status.FAILURE
             
         try:
@@ -101,14 +117,18 @@ class PickUp(py_trees.behaviour.Behaviour):
             detected_objects = getattr(self.blackboard, 'detected_objects', [])
             
             if not detected_objects:
-                self.logger.warn("No objects available to pick up")
-                return py_trees.common.Status.FAILURE
+                self.logger.warn("⚠️ No objects available to pick up")
+                # Return RUNNING instead of FAILURE to allow retrying when objects become available
+                return py_trees.common.Status.RUNNING
                 
             # Pick the first detected object
             target_object = detected_objects[0]
-            x = target_object['x']
-            y = target_object['y'] 
-            roll = target_object['roll']
+            x = target_object.get('x', 0.0)
+            y = target_object.get('y', 0.0) 
+            roll = target_object.get('roll', 0.0)
+            obj_class = target_object.get('class', 'unknown')
+            
+            self.logger.info(f"🦾 Attempting to pick up {obj_class} at ({x:.3f}, {y:.3f})")
             
             # Send pick command to robot
             command = f"pick_at:{x},{y},{roll}"
@@ -118,7 +138,7 @@ class PickUp(py_trees.behaviour.Behaviour):
             response = self.robot_service(req)
             
             if response.success:
-                self.logger.info(f"Successfully picked up object at ({x:.2f}, {y:.2f})")
+                self.logger.info(f"✅ Successfully picked up {obj_class} at ({x:.2f}, {y:.2f})")
                 # Store picked object info for place behavior
                 self.blackboard.picked_object = target_object
                 # Remove picked object from detected list
@@ -126,11 +146,12 @@ class PickUp(py_trees.behaviour.Behaviour):
                 self.blackboard.detected_objects = detected_objects
                 return py_trees.common.Status.SUCCESS
             else:
-                self.logger.error(f"Pick up failed: {response.message}")
+                self.logger.error(f"❌ Pick up failed: {response.message}")
+                # Return FAILURE for robot execution errors
                 return py_trees.common.Status.FAILURE
                 
         except Exception as e:
-            self.logger.error(f"Error during pick up: {e}")
+            self.logger.error(f"❌ Error during pick up: {e}")
             return py_trees.common.Status.FAILURE
 
 class PlaceDown(py_trees.behaviour.Behaviour):
@@ -158,7 +179,7 @@ class PlaceDown(py_trees.behaviour.Behaviour):
     def update(self):
         """Execute place down behavior"""
         if not self.robot_service:
-            self.logger.error("Robot service not available")
+            self.logger.error("❌ Robot service not available")
             return py_trees.common.Status.FAILURE
             
         try:
@@ -167,13 +188,17 @@ class PlaceDown(py_trees.behaviour.Behaviour):
             picked_object = getattr(self.blackboard, 'picked_object', None)
             
             if not picked_object:
-                self.logger.warn("No object available to place down")
-                return py_trees.common.Status.FAILURE
+                self.logger.warn("⚠️ No object available to place down")
+                # Return RUNNING to wait for an object to be picked
+                return py_trees.common.Status.RUNNING
                 
             # Use original object orientation for placing
             roll = picked_object.get('roll', 0.0)
             pitch = 1.438  # Default pitch for placing
             yaw = -0.35    # Default yaw for placing
+            obj_class = picked_object.get('class', 'unknown')
+            
+            self.logger.info(f"📍 Placing {obj_class} at ({self.place_x:.3f}, {self.place_y:.3f}, {self.place_z:.3f})")
             
             # Send place command to robot
             command = f"place_at:{self.place_x},{self.place_y},{self.place_z},{roll},{pitch},{yaw}"
@@ -183,16 +208,16 @@ class PlaceDown(py_trees.behaviour.Behaviour):
             response = self.robot_service(req)
             
             if response.success:
-                self.logger.info(f"Successfully placed object at ({self.place_x:.2f}, {self.place_y:.2f}, {self.place_z:.2f})")
+                self.logger.info(f"✅ Successfully placed {obj_class} at ({self.place_x:.2f}, {self.place_y:.2f}, {self.place_z:.2f})")
                 # Clear picked object from blackboard
                 self.blackboard.picked_object = None
                 return py_trees.common.Status.SUCCESS
             else:
-                self.logger.error(f"Place down failed: {response.message}")
+                self.logger.error(f"❌ Place down failed: {response.message}")
                 return py_trees.common.Status.FAILURE
                 
         except Exception as e:
-            self.logger.error(f"Error during place down: {e}")
+            self.logger.error(f"❌ Error during place down: {e}")
             return py_trees.common.Status.FAILURE
 
 class OpenGripper(py_trees.behaviour.Behaviour):
@@ -687,34 +712,45 @@ def main():
                     if ENABLE_DETAILED_LOGGING:
                         rospy.logdebug(f"Published JSON data for tick {tick_count}")
                 
-                # Check if behavior tree completed successfully
-                if status == py_trees.common.Status.SUCCESS:
-                    rospy.loginfo(f"🎉 Behavior tree completed successfully after {tick_count} ticks!")
-                    rospy.loginfo("Tree terminated. Waiting for next behavior tree task...")
-                    
-                    # Publish final status
-                    if json_publisher and JSON_SERIALIZATION_AVAILABLE:
-                        json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
-                    
-                    # Clean up current tree (py_trees doesn't have shutdown method)
-                    current_behavior_tree = None
-                    tick_count = 0
-                    rospy.loginfo("Behavior tree cleared. Ready for new task.")
-                    
-                elif status == py_trees.common.Status.FAILURE:
-                    rospy.logwarn(f"❌ Behavior tree failed after {tick_count} ticks!")
-                    rospy.loginfo("Tree terminated due to failure. Waiting for next behavior tree task...")
-                    
-                    # Publish final status
-                    if json_publisher and JSON_SERIALIZATION_AVAILABLE:
-                        json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
-                    
-                    # Clean up current tree (py_trees doesn't have shutdown method)
-                    current_behavior_tree = None
-                    tick_count = 0
-                    rospy.loginfo("Failed behavior tree cleared. Ready for new task.")
+        # Check if behavior tree completed successfully
+        if status == py_trees.common.Status.SUCCESS:
+            rospy.loginfo(f"🎉 Behavior tree completed successfully after {tick_count} ticks!")
+            rospy.loginfo("Tree terminated. Waiting for next behavior tree task...")
             
-            # Sleep to maintain the desired rate
+            # Publish final status
+            if json_publisher and JSON_SERIALIZATION_AVAILABLE:
+                json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
+            
+            # Clean up current tree (py_trees doesn't have shutdown method)
+            current_behavior_tree = None
+            tick_count = 0
+            rospy.loginfo("Behavior tree cleared. Ready for new task.")
+            
+        elif status == py_trees.common.Status.FAILURE:
+            rospy.logwarn(f"❌ Behavior tree failed after {tick_count} ticks!")
+            rospy.loginfo("Tree terminated due to failure. Waiting for next behavior tree task...")
+            
+            # Publish final status
+            if json_publisher and JSON_SERIALIZATION_AVAILABLE:
+                json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
+            
+            # Clean up current tree (py_trees doesn't have shutdown method)
+            current_behavior_tree = None
+            tick_count = 0
+            rospy.loginfo("Failed behavior tree cleared. Ready for new task.")
+            
+        elif status == py_trees.common.Status.RUNNING:
+            # Tree is still executing - this is normal operation
+            if tick_count % 20 == 0:  # Log every 20 ticks to avoid spam
+                rospy.loginfo(f"🔄 Behavior tree running (tick {tick_count})")
+        
+        elif status == py_trees.common.Status.INVALID:
+            rospy.logwarn(f"⚠️ Behavior tree has invalid status after {tick_count} ticks")
+            # Don't reset the tree immediately - might be temporary
+            if tick_count > 100:  # Reset after many invalid ticks
+                rospy.logerr("Resetting behavior tree due to persistent invalid status")
+                current_behavior_tree = None
+                tick_count = 0            # Sleep to maintain the desired rate
             rate.sleep()
             
     except KeyboardInterrupt:
