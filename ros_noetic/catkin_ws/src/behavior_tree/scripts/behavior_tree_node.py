@@ -37,6 +37,9 @@ class DetectObjects(py_trees.behaviour.Behaviour):
         self.logger = py_trees.logging.Logger(name)
         self.detected_objects = []
         self.subscriber = rospy.Subscriber('/yolo_detected_targets', String, self._detection_callback)
+        # Initialize blackboard client
+        self.blackboard = self.attach_blackboard_client(name=self.name)
+        self.blackboard.register_key(key="detected_objects", access=py_trees.common.Access.WRITE)
         
     def setup(self, timeout=None):
         """Setup the YOLO detection subscriber"""
@@ -76,7 +79,6 @@ class DetectObjects(py_trees.behaviour.Behaviour):
                 self.logger.info(obj_info)
             
             # Store detection data in blackboard for other behaviors to use
-            self.blackboard = self.attach_blackboard_client(name=self.name)
             self.blackboard.detected_objects = self.detected_objects
             return py_trees.common.Status.SUCCESS
         else:
@@ -93,6 +95,10 @@ class PickUp(py_trees.behaviour.Behaviour):
         self.logger = py_trees.logging.Logger(name)
         self.robot_service = None
         self.picked_object = None
+        # Initialize blackboard client
+        self.blackboard = self.attach_blackboard_client(name=self.name)
+        self.blackboard.register_key(key="detected_objects", access=py_trees.common.Access.READ)
+        self.blackboard.register_key(key="picked_object", access=py_trees.common.Access.WRITE)
         
     def setup(self, timeout=None):
         """Setup the robot control service client"""
@@ -113,7 +119,6 @@ class PickUp(py_trees.behaviour.Behaviour):
             
         try:
             # Get detected objects from blackboard
-            self.blackboard = self.attach_blackboard_client(name=self.name)
             detected_objects = getattr(self.blackboard, 'detected_objects', [])
             
             if not detected_objects:
@@ -164,6 +169,9 @@ class PlaceDown(py_trees.behaviour.Behaviour):
         self.place_x = place_x
         self.place_y = place_y
         self.place_z = place_z
+        # Initialize blackboard client
+        self.blackboard = self.attach_blackboard_client(name=self.name)
+        self.blackboard.register_key(key="picked_object", access=py_trees.common.Access.READ)
         
     def setup(self, timeout=None):
         """Setup the robot control service client"""
@@ -184,7 +192,6 @@ class PlaceDown(py_trees.behaviour.Behaviour):
             
         try:
             # Get picked object from blackboard
-            self.blackboard = self.attach_blackboard_client(name=self.name)
             picked_object = getattr(self.blackboard, 'picked_object', None)
             
             if not picked_object:
