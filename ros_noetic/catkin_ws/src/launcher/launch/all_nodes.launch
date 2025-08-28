@@ -1,5 +1,7 @@
 <launch>
 
+    <!-- Figlet Banner Node (prints project name and exits) -->
+    <node name="figlet_node" pkg="launcher" type="figlet_node.py" output="screen" respawn="false" />
 
     <!-- LLM Node (Python 3.9 shebang in script ensures correct interpreter) -->
     <!-- <node name="llm_node" pkg="llm" type="llm_node.py" output="screen" respawn="true" />-->

@@ -45,8 +45,6 @@ try:
         no_signal_frame = np.zeros((480, 640, 3), dtype=np.uint8)
         cv2.putText(no_signal_frame, "NO CAMERA SIGNAL", (150, 240), 
                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-    else:
-        rospy.loginfo(f"✅ 成功載入 no-signal 圖片: {no_signal_image_path}")
 except Exception as e:
     rospy.logerr(f"載入 no-signal 圖片時發生錯誤: {e}")
     # 創建一個黑色的替代圖片
@@ -78,10 +76,10 @@ try:
         rospy.loginfo("✅ 攝影機開啟成功")
     else:
         camera_available = False
-        rospy.logwarn("❌ 攝影機開啟失敗，將使用 no-signal 圖片")
+        rospy.logwarn("❌ 攝影機開啟失敗")
 except Exception as e:
     camera_available = False
-    rospy.logerr(f"❌ 攝影機初始化時發生錯誤: {e}，將使用 no-signal 圖片")
+    rospy.logerr(f"❌ 攝影機初始化時發生錯誤: {e}")
 
 # ========== ArUco 設定 ==========
 aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)

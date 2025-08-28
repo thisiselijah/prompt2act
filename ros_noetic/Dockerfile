@@ -13,8 +13,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 # =============================================================================
 # System Dependencies
 # =============================================================================
-# Install essential system packages, development tools, and audio processing libraries
 RUN apt-get update && apt-get install -y \
+    figlet \
     # Core development tools
     python3-pip \
     python3-rosdep \
