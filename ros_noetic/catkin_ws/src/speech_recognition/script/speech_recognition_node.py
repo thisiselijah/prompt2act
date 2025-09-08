@@ -139,6 +139,11 @@ class SpeechRecognitionNode:
         """
         # Check if the file needs conversion
         base, ext = os.path.splitext(audio_file_path)
+        
+        # Debug: Print input audio format
+        rospy.loginfo(f"DEBUG: Input audio file: {audio_file_path}")
+        rospy.loginfo(f"DEBUG: Detected audio format: {ext.lower()}")
+        
         if ext.lower() not in ['.wav', '.flac', '.aiff', '.aifc']:
             try:
                 rospy.loginfo(f"Converting {ext} file to WAV format...")
@@ -156,6 +161,8 @@ class SpeechRecognitionNode:
                 rospy.loginfo(f"Audio conversion successful: {ext} -> WAV")
             except Exception as e:
                 return f"Error converting audio file: {e}"
+        else:
+            rospy.loginfo(f"DEBUG: Audio format {ext.lower()} is already supported, no conversion needed")
 
         try:
             with sr.AudioFile(audio_file_path) as source:
