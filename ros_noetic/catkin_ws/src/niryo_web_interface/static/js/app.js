@@ -614,13 +614,44 @@ function getStatusClass(status) {
 }
 
 // Voice input placeholder (implement based on your speech recognition setup)
-function startVoiceInput() {
-    showToast('語音輸入功能開發中...', 'warning');
-    
-    // Placeholder for voice recognition implementation
-    // This would integrate with your speech recognition system
-    console.log('Voice input requested');
+
+let mediaRecorder;
+let audioChunks = [];
+
+function openRecorderBox() {
+    document.getElementById("recorder-box").style.display = "block";
+
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.start();
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+
+            document.getElementById("stop-btn").onclick = () => mediaRecorder.stop();
+
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // 保留原格式
+                const formData = new FormData();
+                formData.append('file', audioBlob, 'recording.webm');
+
+                fetch('/voice_command', { method: 'POST', body: formData })
+                    .then(res => res.json())
+                    .then(data => {
+                        console.log('語音辨識結果:', data);
+                        showToast("辨識完成: " + data.transcribed_text, "success");
+
+                        // ✅ 在網頁上顯示辨識文字
+                        document.getElementById('transcribed-text').innerText = data.transcribed_text;
+                    });
+
+                document.getElementById("recorder-box").style.display = "none";
+            };
+        })
+        .catch(err => alert("麥克風無法使用: " + err));
 }
+
 
 // Enhanced initialization
 document.addEventListener('DOMContentLoaded', function() {

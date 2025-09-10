@@ -7,7 +7,7 @@ import rospy
 import speech_recognition as sr
 from pydub import AudioSegment
 import os
-from speech_recognition.srv import ProcessAudioCommand, ProcessAudioCommandResponse
+from speech_recognition_package.srv import ProcessAudioCommand, ProcessAudioCommandResponse
 from llm.srv import GenerateBehaviorTree, GenerateBehaviorTreeRequest
 
 class SpeechRecognitionNode:
@@ -131,7 +131,7 @@ class SpeechRecognitionNode:
         converting to a compatible format (WAV) if necessary.
 
         Args:
-            audio_file_path (str): The path to the audio file (e.g., .wav, .mp3, .m4a).
+            audio_file_path (str): The path to the audio file (e.g., .wav, .mp3, .m4a, .webm).
             language (str): The language tag for the transcription, e.g., 'en-US' for English, 'zh-CN' for Chinese.
 
         Returns:
@@ -139,16 +139,30 @@ class SpeechRecognitionNode:
         """
         # Check if the file needs conversion
         base, ext = os.path.splitext(audio_file_path)
+        
+        # Debug: Print input audio format
+        rospy.loginfo(f"DEBUG: Input audio file: {audio_file_path}")
+        rospy.loginfo(f"DEBUG: Detected audio format: {ext.lower()}")
+        
         if ext.lower() not in ['.wav', '.flac', '.aiff', '.aifc']:
             try:
                 rospy.loginfo(f"Converting {ext} file to WAV format...")
-                audio = AudioSegment.from_file(audio_file_path)
+                
+                # Special handling for .webm files
+                if ext.lower() == '.webm':
+                    rospy.loginfo("Detected WebM format, converting to WAV...")
+                    audio = AudioSegment.from_file(audio_file_path, format="webm")
+                else:
+                    audio = AudioSegment.from_file(audio_file_path)
+                
                 wav_file_path = base + ".wav"
                 audio.export(wav_file_path, format="wav")
                 audio_file_path = wav_file_path
-                rospy.loginfo("Audio conversion successful.")
+                rospy.loginfo(f"Audio conversion successful: {ext} -> WAV")
             except Exception as e:
                 return f"Error converting audio file: {e}"
+        else:
+            rospy.loginfo(f"DEBUG: Audio format {ext.lower()} is already supported, no conversion needed")
 
         try:
             with sr.AudioFile(audio_file_path) as source:
@@ -193,4 +207,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

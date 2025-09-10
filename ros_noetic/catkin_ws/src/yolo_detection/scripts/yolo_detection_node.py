@@ -29,8 +29,8 @@ aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 aruco_params = cv2.aruco.DetectorParameters()
 
 # 桌面尺寸 (cm)
-TABLE_WIDTH_CM = 23
-TABLE_HEIGHT_CM = 30
+TABLE_WIDTH_CM = 30
+TABLE_HEIGHT_CM = 29
 
 # --- 座標轉換 ---
 def camera_to_robot_coords(wx, wy):

@@ -76,10 +76,19 @@
             <!-- Voice Control -->
             <div class="control-group">
                 <h3>語音控制</h3>
-                <button class="btn btn-voice" id="voice-btn" onclick="startVoiceInput()">
+                <button class="btn btn-voice" id="voice-btn" onclick="openRecorderBox()">
                     語音輸入
                 </button>
             </div>
+
+            <!-- 錄音框 (一開始隱藏) -->
+            <div id="recorder-box" style="display:none; border:1px solid #ccc; padding:10px; margin-top:10px;">
+                <p>🎤 正在錄音中...</p>
+                <button id="stop-btn">停止錄音</button>
+            </div>
+
+            <p id="transcribed-text"></p>
+
 
             <!-- Behavior Tree Visualization -->
             <div class="control-group">

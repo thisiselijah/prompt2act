@@ -8,12 +8,15 @@ import numpy as np
 from std_msgs.msg import String
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
+
 import threading
 import json
 import signal
 import sys
 
 from niryo_web_interface.srv import PickObject, PickObjectResponse  # 修改為你實際的 package 名稱
+from speech_recognition_package.srv import ProcessAudioCommand
+
 
 # ========== ROS 初始化 ==========
 rospack = rospkg.RosPack()
@@ -347,6 +350,32 @@ def count_tree_nodes(node):
             count += count_tree_nodes(child)
     
     return count
+
+
+@app.route("/voice_command", methods=["POST"])
+def voice_command():
+    if "file" not in request.files:
+        return jsonify({"error": "No audio file"}), 400
+
+    audio_file = request.files["file"]
+    save_path = "/tmp/recording.webm"
+    audio_file.save(save_path)
+
+    # 呼叫 ROS Service
+    rospy.wait_for_service("/process_audio_command")
+    try:
+        process_audio = rospy.ServiceProxy("/process_audio_command", ProcessAudioCommand)
+        resp = process_audio(audio_file_path=save_path, language="en-US")
+
+        return jsonify({
+            "success": resp.success,
+            "transcribed_text": resp.transcribed_text,
+            "behavior_tree_json": resp.behavior_tree_json,
+            "error_message": resp.error_message
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ========== 主程式 ==========
 if __name__ == '__main__':
     # 註冊信號處理器，確保 Ctrl+C (SIGINT) 或 SIGTERM 會優雅關閉

@@ -56,10 +56,12 @@ RUN apt-get update && apt-get install -y \
 # Terminal Multiplexer (Zellij)
 # =============================================================================
 # Install latest Zellij for enhanced terminal experience
-RUN wget https://github.com/zellij-org/zellij/releases/latest/download/zellij-x86_64-unknown-linux-musl.tar.gz \
- && tar -xvf zellij-x86_64-unknown-linux-musl.tar.gz \
- && rm zellij-x86_64-unknown-linux-musl.tar.gz \
- && mv zellij /usr/local/bin/
+RUN apt-get update && apt-get install -y curl \
+ && curl -L https://github.com/zellij-org/zellij/releases/latest/download/zellij-x86_64-unknown-linux-musl.tar.gz -o zellij.tar.gz \
+ && tar -xvf zellij.tar.gz \
+ && rm zellij.tar.gz \
+ && mv zellij /usr/local/bin/zellij
+
 
 # =============================================================================
 # Python Version Management (PyEnv)

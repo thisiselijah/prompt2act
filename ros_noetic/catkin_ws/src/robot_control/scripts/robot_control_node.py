@@ -140,16 +140,16 @@ def main():
     Main function to initialize the ROS node and services
     """
     
-    NIRYOROBOT_IP_WIFI = "192.168.232.26"
+    NIRYOROBOT_IP_WIFI = "10.161.253.26"
     NIRYOROBOT_IP_LOCAL = "10.10.10.10"
 
     
     niryo = NiryoRobot()
     
     try:
-        niryo = NiryoRobot(NIRYOROBOT_IP_LOCAL)  # Connect to the robot
+        niryo = NiryoRobot(NIRYOROBOT_IP_WIFI)  # Connect to the robot
     except Exception as e:
-        rospy.logerr(f"Failed to connect to Niryo One at {NIRYOROBOT_IP_LOCAL}: {e}")
+        rospy.logerr(f"Failed to connect to Niryo One at {NIRYOROBOT_IP_WIFI}: {e}")
         return
     
     # 檢查並校準機器人
