@@ -30,7 +30,7 @@ Use double quotes for all strings and proper escaping.
 
 Requirements:
 1. Root node must be 'sequence' or 'selector'
-2. Include appropriate behavior types: 'detect_objects', 'pick_up', 'place_down', 'open_gripper', 'close_gripper', 'move_to_home'
+2. Include appropriate behavior types: 'detect_objects', 'pick_up', 'place_down', 'open_gripper', 'close_gripper', 'move_to_home' (only when pose changes are involved)
 3. Use proper nesting for complex behaviors
 4. Each node must have 'type' and 'name' fields
 5. Composite nodes (sequence/selector) must have 'children' array
@@ -46,16 +46,44 @@ Available behavior types:
 - place_down: For placing objects at specified coordinates (supports place_x, place_y, place_z parameters)
 - open_gripper: For opening the robot gripper
 - close_gripper: For closing the robot gripper
-- move_to_home: For moving robot to home/rest position
+- move_to_home: For moving robot to home/rest position (only include when the task involves pose changes or object manipulation)
 - move_to_pose: For moving robot to a specific pose (supports pose_x, pose_y, pose_z, pose_roll, pose_pitch, pose_yaw parameters)
 - move_above_object: For moving robot above a detected object (supports target_object_class, target_color, z_offset parameters)
+- move_to_white_region: For moving robot to the white region work area (supports z_height parameter)
 - sequence: Execute children in order (all must succeed)
 - selector: Try children until one succeeds
+
+IMPORTANT: For irrelevant instructions (non-robotics tasks like "tell me a joke", "what's the weather", "sing a song", "dance", etc.), return an empty behavior tree with just a sequence root and no children. Do not attempt to create robot behaviors for non-robotics tasks.
+
+IMPORTANT: For gripper-only instructions (like "open gripper", "close gripper", "release gripper"), do NOT include move_to_home action. Only include move_to_home when the task involves actual pose changes or object manipulation that requires returning to a safe position.
 
 Return ONLY this JSON format (replace content as needed):
 {{
   "type": "sequence",
   "name": "MainTask", 
+  "children": [
+    {{
+      "type": "detect_objects",
+      "name": "DetectObjects"
+    }},
+    {{
+      "type": "pick_up",
+      "name": "PickUpObject"
+    }},
+    {{
+      "type": "place_down", 
+      "name": "PlaceObject",
+      "place_x": 0.15,
+      "place_y": -0.15,
+      "place_z": 0.18
+    }}
+  ]
+}}
+
+Example with move_to_home (for tasks requiring pose changes):
+{{
+  "type": "sequence",
+  "name": "TaskWithHomeReturn", 
   "children": [
     {{
       "type": "detect_objects",
@@ -105,6 +133,73 @@ Example with move_to_pose:
   ]
 }}
 
+Example for complex pick-and-place task "Pick up the blue cube and place it down to the white region":
+{{
+  "type": "sequence",
+  "name": "PickAndPlaceToWhiteRegion",
+  "children": [
+    {{
+      "type": "detect_objects",
+      "name": "DetectObjects"
+    }},
+    {{
+      "type": "move_above_object",
+      "name": "MoveAboveBlueCube",
+      "target_object_class": "cube",
+      "target_color": "blue",
+      "z_offset": 0.1
+    }},
+    {{
+      "type": "pick_up",
+      "name": "PickUpBlueCube"
+    }},
+    {{
+      "type": "move_to_white_region",
+      "name": "MoveToWhiteRegion",
+      "z_height": 0.3
+    }},
+    {{
+      "type": "place_down",
+      "name": "PlaceInWhiteRegion"
+    }},
+    {{
+      "type": "move_to_home",
+      "name": "ReturnHome"
+    }}
+  ]
+}}
+
+Example for gripper-only task "Open the gripper":
+{{
+  "type": "sequence",
+  "name": "GripperOnlyTask",
+  "children": [
+    {{
+      "type": "open_gripper",
+      "name": "OpenGripper"
+    }}
+  ]
+}}
+
+Example for gripper-only task "Close the gripper":
+{{
+  "type": "sequence",
+  "name": "CloseGripperTask",
+  "children": [
+    {{
+      "type": "close_gripper",
+      "name": "CloseGripper"
+    }}
+  ]
+}}
+
+Example for irrelevant instruction (return empty tree):
+{{
+  "type": "sequence",
+  "name": "EmptyTask",
+  "children": []
+}}
+
 Task: {task_description}
 """
 
@@ -125,7 +220,7 @@ BEHAVIOR_TREE_SCHEMA = {
                 "properties": {
                     "type": {
                         "type": "string",
-                        "enum": ["detect_objects", "pick_up", "place_down", "open_gripper", "close_gripper", "move_to_home", "move_to_pose", "move_above_object", "sequence", "selector"]
+                        "enum": ["detect_objects", "pick_up", "place_down", "open_gripper", "close_gripper", "move_to_home", "move_to_pose", "move_above_object", "move_to_white_region", "sequence", "selector"]
                     },
                     "name": {
                         "type": "string"
@@ -164,6 +259,9 @@ BEHAVIOR_TREE_SCHEMA = {
                         "type": "string"
                     },
                     "z_offset": {
+                        "type": "number"
+                    },
+                    "z_height": {
                         "type": "number"
                     }
                 },
@@ -402,6 +500,15 @@ class LLMNode:
                 # Basic validation of the structure
                 if 'type' not in parsed_json or 'name' not in parsed_json:
                     rospy.logwarn("Generated JSON missing required fields (type/name)")
+                
+                # Check for irrelevant instructions (empty behavior tree)
+                if 'children' in parsed_json and len(parsed_json['children']) == 0:
+                    rospy.loginfo("Irrelevant instruction detected - returning empty behavior tree")
+                    return GenerateBehaviorTreeResponse(
+                        success=True, 
+                        behavior_tree_json=cleaned_response, 
+                        error_message="Irrelevant instruction - no action required"
+                    )
                 
                 # Always call the behavior tree assembly service automatically
                 assembly_success, assembly_message = self._call_behavior_tree_assembly(cleaned_response)
