@@ -92,15 +92,23 @@ TABLE_HEIGHT_CM = 30
 
 # ========== YOLO 偵測結果 ==========
 detected_objects = []  # 當前偵測到的物件
+white_region_coords = None  # 全域變數，只存一次
 
 def yolo_result_callback(msg):
-    global detected_objects
+    global detected_objects, white_region_coords
     try:
         data = json.loads(msg.data)
-        # 保證 detected_objects 永遠是最新的
-        detected_objects = data if data else []
+        detected_objects = data.get("detections", [])
+
+        # 只在尚未存過 white_region 時才儲存
+        if white_region_coords is None:
+            white_region_coords = data.get("white_region", None)
+            if white_region_coords is not None:
+                rospy.loginfo(f"白色區塊座標已儲存: {white_region_coords}")
+
     except Exception as e:
         rospy.logerr(f"解析 YOLO 偵測結果失敗: {e}")
+
 
 rospy.Subscriber('/yolo_detected_targets', String, yolo_result_callback)
 
@@ -253,21 +261,25 @@ def open_and_close():
     data = request.get_json()
     direction = data.get("direction", "")
     arm_command_pub.publish(direction)
+    
     return jsonify({"message": f"已送出 {direction} 指令"})
 
 @app.route('/learning_mode', methods=['POST'])
 def learning_mode():
     arm_command_pub.publish("learning_mode")
+
     return jsonify({"message": "已切換至 Learning Mode"})
 
 @app.route('/move_to_home', methods=['POST'])
 def move_to_home():
     arm_command_pub.publish("move_to_home")
+
     return jsonify({"message": "已切換至 Home Pose"})
 
 @app.route('/camera_status', methods=['GET'])
 def camera_status():
     global camera_available
+
     return jsonify({
         "camera_available": camera_available,
         "status": "connected" if camera_available else "disconnected",
@@ -277,6 +289,7 @@ def camera_status():
 @app.route('/reconnect_camera', methods=['POST'])
 def reconnect_camera():
     global camera_available, camera, camera_error_logged
+
     try:
         rospy.loginfo("手動嘗試重新連接攝影機...")
         
@@ -303,6 +316,7 @@ def reconnect_camera():
 @app.route('/pick_object', methods=['POST'])
 def pick_object():
     global camera_available
+
     data = request.get_json()
     target_label = data.get("label", "").lower()
 
@@ -328,9 +342,33 @@ def pick_object():
     arm_command_pub.publish(command)
     return jsonify({"message": f"✅ 已送出抓取指令：{target_label} → ({x:.2f}, {y:.2f}), roll = {roll:.3f}"})
 
+
+@app.route('/place_to_white_region', methods=['POST'])
+def place_to_white_region():
+    global white_region_coords
+
+    if white_region_coords is None:
+        return jsonify({"success": False, "message": "❌ 尚未偵測到白色區塊，無法放置"}), 400
+
+    x = white_region_coords["x"]
+    y = white_region_coords["y"]
+    z = 0.163  # 放置高度（公尺）
+    roll = 0.0  # 可以依需求調整
+    pitch = 1.438
+    yaw = -0.35
+
+    # 發送到 ROS /niryo_arm_command
+    command = f"place_at:{x:.3f},{y:.3f},{z:.3f},{roll:.3f},{pitch:.3f},{yaw:.3f}"
+    arm_command_pub.publish(command)
+    rospy.loginfo(f"放置至白色區塊: ({x:.3f}, {y:.3f})")
+
+    return jsonify({"success": True, "message": f"✅ 已送出放置指令至白色區塊: ({x:.3f}, {y:.3f})"})
+
+
 @app.route('/behavior_tree_status', methods=['GET'])
 def behavior_tree_status():
     global behavior_tree_data
+
     return jsonify({
         "structure": behavior_tree_data.get('structure'),
         "status": behavior_tree_data.get('status'),

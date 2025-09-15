@@ -42,10 +42,16 @@ def camera_to_robot_coords(wx, wy):
 
 # --- ROS Publisher ---
 bridge = CvBridge()
-pub_target = rospy.Publisher('/yolo_detected_targets', String, queue_size=10)  # 改成 targets，傳回多個物件
+pub_target = rospy.Publisher('/yolo_detected_targets', String, queue_size=10)
+
+# --- 狀態旗標 ---
+white_region_detected = False
+white_region_coords = None
 
 # --- 影像處理 ---
 def image_callback(msg):
+    global white_region_detected, white_region_coords
+
     frame = bridge.imgmsg_to_cv2(msg, "bgr8")
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -54,13 +60,11 @@ def image_callback(msg):
     if ids is None or len(ids) < 4:
         return
 
-    # 取得中心點
     id_list = ids.flatten()
     aruco_points = {}
     for i, corner in enumerate(corners):
         aruco_points[id_list[i]] = corner[0].mean(axis=0)
 
-    # 建立透視轉換矩陣
     if all(k in aruco_points for k in [0, 1, 2, 3]):
         src_pts = np.array([
             aruco_points[3],  # 左上
@@ -89,6 +93,25 @@ def image_callback(msg):
             cls_id = int(box.cls[0])
             label_name = model.names[cls_id].lower()
 
+            # --- 新增 white_region 一次性偵測 ---
+            if label_name == "white_region" and not white_region_detected:
+                pts = box.xyxyxyxy.cpu().numpy().astype(int).reshape((-1, 2))
+                cx = int(np.mean(pts[:, 0]))
+                cy = int(np.mean(pts[:, 1]))
+
+                world_pos = cv2.perspectiveTransform(np.array([[[cx, cy]]], dtype='float32'), M)
+                wx, wy = world_pos[0][0]
+
+                if 0 <= wx <= 1 and 0 <= wy <= 1:
+                    robot_x, robot_y = camera_to_robot_coords(wx, wy)
+                    white_region_coords = {"x": robot_x, "y": robot_y}
+                    white_region_detected = True
+                    rospy.loginfo(f"White region detected at {white_region_coords}")
+
+                # 不要把 white_region 加進 detections_list，因為它只是工作區塊
+                continue
+
+            # --- 只偵測藍紅積木 ---
             if label_name not in ["blue_block", "red_block"]:
                 continue
 
@@ -118,7 +141,11 @@ def image_callback(msg):
 
     # 發送 JSON
     if detections_list:
-        pub_target.publish(json.dumps(detections_list))
+        output = {
+            "detections": detections_list,
+            "white_region": white_region_coords if white_region_coords else None
+        }
+        pub_target.publish(json.dumps(output))
 
 # --- 訂閱攝影機 ---
 rospy.Subscriber('/web_camera/image_raw', Image, image_callback)

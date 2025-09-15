@@ -6,6 +6,7 @@ from pyniryo import NiryoRobot
 from pyniryo import PoseObject
 
 # --- Service section ---
+
 def robot_control_service(niryo):
     """
     Create ROS service to control the robot
@@ -89,6 +90,24 @@ def robot_control_service(niryo):
                 rospy.loginfo("Place completed")
                 
             # 4. Robot State Actions
+            elif command == "place_to_white_region":
+                global white_region_coords  # <- 
+
+                if white_region_coords is None:
+                    raise ValueError("白色區塊尚未偵測到，無法放置")
+                
+                x = white_region_coords["x"]
+                y = white_region_coords["y"]
+                z = 0.163
+                roll = 0.0
+                pitch = 1.438
+                yaw = -0.35
+
+                rospy.loginfo(f"Placing to white region at ({x:.3f}, {y:.3f})")
+                pose_obj = PoseObject(x, y, z, roll, pitch, yaw)
+                niryo.move_pose(pose_obj)
+                niryo.open_gripper()
+                rospy.loginfo("Place to white region completed")
             elif command == "enable_learning_mode":
                 niryo.set_learning_mode(True)
                 rospy.loginfo("Learning mode enabled")
