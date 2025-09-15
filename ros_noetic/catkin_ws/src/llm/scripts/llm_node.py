@@ -47,6 +47,8 @@ Available behavior types:
 - open_gripper: For opening the robot gripper
 - close_gripper: For closing the robot gripper
 - move_to_home: For moving robot to home/rest position
+- move_to_pose: For moving robot to a specific pose (supports pose_x, pose_y, pose_z, pose_roll, pose_pitch, pose_yaw parameters)
+- move_above_object: For moving robot above a detected object (supports target_object_class, target_color, z_offset parameters)
 - sequence: Execute children in order (all must succeed)
 - selector: Try children until one succeeds
 
@@ -77,6 +79,32 @@ Return ONLY this JSON format (replace content as needed):
   ]
 }}
 
+Example with move_to_pose:
+{{
+  "type": "sequence",
+  "name": "MoveAndPickTask",
+  "children": [
+    {{
+      "type": "move_to_pose",
+      "name": "MoveToObservationPoint",
+      "pose_x": 0.2,
+      "pose_y": 0.1,
+      "pose_z": 0.25,
+      "pose_roll": 0.0,
+      "pose_pitch": 1.5,
+      "pose_yaw": 0.0
+    }},
+    {{
+      "type": "detect_objects",
+      "name": "DetectObjects"
+    }},
+    {{
+      "type": "pick_up",
+      "name": "PickUpObject"
+    }}
+  ]
+}}
+
 Task: {task_description}
 """
 
@@ -97,7 +125,7 @@ BEHAVIOR_TREE_SCHEMA = {
                 "properties": {
                     "type": {
                         "type": "string",
-                        "enum": ["detect_objects", "pick_up", "place_down", "open_gripper", "close_gripper", "move_to_home", "sequence", "selector"]
+                        "enum": ["detect_objects", "pick_up", "place_down", "open_gripper", "close_gripper", "move_to_home", "move_to_pose", "move_above_object", "sequence", "selector"]
                     },
                     "name": {
                         "type": "string"
@@ -109,6 +137,33 @@ BEHAVIOR_TREE_SCHEMA = {
                         "type": "number"
                     },
                     "place_z": {
+                        "type": "number"
+                    },
+                    "pose_x": {
+                        "type": "number"
+                    },
+                    "pose_y": {
+                        "type": "number"
+                    },
+                    "pose_z": {
+                        "type": "number"
+                    },
+                    "pose_roll": {
+                        "type": "number"
+                    },
+                    "pose_pitch": {
+                        "type": "number"
+                    },
+                    "pose_yaw": {
+                        "type": "number"
+                    },
+                    "target_object_class": {
+                        "type": "string"
+                    },
+                    "target_color": {
+                        "type": "string"
+                    },
+                    "z_offset": {
                         "type": "number"
                     }
                 },
