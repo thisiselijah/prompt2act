@@ -577,11 +577,13 @@ class MoveAboveObject(py_trees.behaviour.Behaviour):
 class MoveToWhiteRegion(py_trees.behaviour.Behaviour):
     """Behavior to move robot to the white region (designated work area)"""
     
-    def __init__(self, name, z_height=0.3):
+    def __init__(self, name, z_height=0.3, max_attempts=10):
         super(MoveToWhiteRegion, self).__init__(name)
         self.logger = py_trees.logging.Logger(name)
         self.robot_service = None
         self.z_height = z_height  # Height above the white region
+        self.max_attempts = max_attempts  # Maximum attempts before failure
+        self.current_attempts = 0  # Counter for current attempts
         self.blackboard = py_trees.blackboard.Blackboard()
         
     def setup(self, timeout=None):
@@ -610,7 +612,13 @@ class MoveToWhiteRegion(py_trees.behaviour.Behaviour):
             white_region = self.blackboard.get('white_region')
             
             if not white_region:
-                self.logger.warn("⚠️ No white region detected")
+                self.current_attempts += 1
+                self.logger.warn(f"⚠️ No white region detected (attempt {self.current_attempts}/{self.max_attempts})")
+                
+                if self.current_attempts >= self.max_attempts:
+                    self.logger.error(f"❌ Failed to detect white region after {self.max_attempts} attempts")
+                    return py_trees.common.Status.FAILURE
+                
                 return py_trees.common.Status.RUNNING
             
             # Move to white region with specified height
@@ -632,6 +640,8 @@ class MoveToWhiteRegion(py_trees.behaviour.Behaviour):
             
             if response.success:
                 self.logger.info(f"✅ Successfully moved to white region")
+                # Reset attempts counter on success
+                self.current_attempts = 0
                 return py_trees.common.Status.SUCCESS
             else:
                 self.logger.error(f"❌ Failed to move to white region: {response.message}")
@@ -998,9 +1008,10 @@ def create_behavior_from_config(config):
             z_offset = config.get('z_offset', 0.1)
             return MoveAboveObject(behavior_name, target_object_class, target_color, z_offset)
         elif behavior_type == 'move_to_white_region':
-            # Allow custom height parameter from config
+            # Allow custom height parameter and max attempts from config
             z_height = config.get('z_height', 0.3)
-            return MoveToWhiteRegion(behavior_name, z_height)
+            max_attempts = config.get('max_attempts', 10)
+            return MoveToWhiteRegion(behavior_name, z_height, max_attempts)
         elif behavior_type == 'sequence':
             sequence = py_trees.composites.Sequence(behavior_name, memory=False)
             for child_config in config.get('children', []):
