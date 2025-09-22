@@ -346,7 +346,7 @@ class LLMNode:
         provider = self.providers[provider_type]
         if provider.initialize():
             self.current_provider = provider
-            rospy.loginfo(f"Successfully initialized {provider_type} provider")
+            # rospy.loginfo(f"Successfully initialized {provider_type} provider")
             return True
         else:
             rospy.logerr(f"Failed to initialize {provider_type} provider")
