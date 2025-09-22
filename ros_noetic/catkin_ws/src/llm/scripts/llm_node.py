@@ -434,9 +434,17 @@ class LLMNode:
             
             response = self.current_provider.generate_json_response(prompt, schema)
             
+            # Format JSON response for better readability
+            try:
+                parsed_json = json.loads(response)
+                formatted_response = json.dumps(parsed_json, indent=2, ensure_ascii=False)
+            except (json.JSONDecodeError, TypeError):
+                # If response is not valid JSON or parsing fails, return as-is
+                formatted_response = response
+            
             return LLMJsonQueryResponse(
                 success=True, 
-                json_response=response, 
+                json_response=formatted_response, 
                 error_message=""
             )
         except Exception as e:
@@ -495,7 +503,10 @@ class LLMNode:
                 # Additional cleaning for cross-platform JSON parsing
                 cleaned_response = self._sanitize_json_for_parsing(cleaned_response)
                 parsed_json = json.loads(cleaned_response)
-                rospy.loginfo(f"Generated behavior tree JSON: {cleaned_response}")
+                
+                # Format JSON for better readability in service response
+                formatted_json = json.dumps(parsed_json, indent=2, ensure_ascii=False)
+                rospy.loginfo(f"Generated behavior tree JSON:\n{formatted_json}")
                 
                 # Basic validation of the structure
                 if 'type' not in parsed_json or 'name' not in parsed_json:
@@ -506,18 +517,18 @@ class LLMNode:
                     rospy.loginfo("Irrelevant instruction detected - returning empty behavior tree")
                     return GenerateBehaviorTreeResponse(
                         success=True, 
-                        behavior_tree_json=cleaned_response, 
+                        behavior_tree_json=formatted_json, 
                         error_message="Irrelevant instruction - no action required"
                     )
                 
                 # Always call the behavior tree assembly service automatically
-                assembly_success, assembly_message = self._call_behavior_tree_assembly(cleaned_response)
+                assembly_success, assembly_message = self._call_behavior_tree_assembly(formatted_json)
                 
                 if assembly_success:
                     rospy.loginfo(f"Behavior tree assembled successfully: {assembly_message}")
                     return GenerateBehaviorTreeResponse(
                         success=True, 
-                        behavior_tree_json=cleaned_response, 
+                        behavior_tree_json=formatted_json, 
                         error_message=""
                     )
                 else:
@@ -525,7 +536,7 @@ class LLMNode:
                     # Still return success for JSON generation, but include assembly warning
                     return GenerateBehaviorTreeResponse(
                         success=True, 
-                        behavior_tree_json=cleaned_response, 
+                        behavior_tree_json=formatted_json, 
                         error_message=f"JSON generated but assembly failed: {assembly_message}"
                     )
                 
@@ -721,12 +732,12 @@ class LLMNode:
             # Fix trailing commas before closing braces/brackets
             json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
             
-            # Validate and pretty-format if possible
+            # Validate JSON structure first
             try:
                 import json
                 parsed = json.loads(json_str)
-                # Re-format with proper indentation
-                json_str = json.dumps(parsed, indent=2, ensure_ascii=False)
+                # Return the cleaned but not yet formatted version for parsing
+                return json.dumps(parsed, separators=(',', ':'))
             except (json.JSONDecodeError, UnicodeDecodeError):
                 # If parsing fails, just do minimal cleaning
                 # Ensure proper spacing around colons and commas only if not already formatted
