@@ -7,7 +7,7 @@
     <node name="llm_node" pkg="llm" type="llm_node.py" output="screen" respawn="true" />
 
     <!-- Behavior Tree Node -->
-    <node name="behavior_tree_node" pkg="behavior_tree" type="behavior_tree_node.py" output="screen" respawn="true" />
+    <!-- <node name="behavior_tree_node" pkg="behavior_tree" type="behavior_tree_node.py" output="screen" respawn="true" /> -->
 
     <!-- Robot Control Node -->
     <node name="robot_control_node" pkg="robot_control" type="robot_control_node.py" output="screen" respawn="false" />

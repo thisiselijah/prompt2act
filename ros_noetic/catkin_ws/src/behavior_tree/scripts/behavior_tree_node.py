@@ -650,8 +650,8 @@ class MoveToWhiteRegion(py_trees.behaviour.Behaviour):
                 return py_trees.common.Status.RUNNING
             
             # Move to white region with specified height
-            x = white_region.get('x', 0.2)
-            y = white_region.get('y', -0.1) 
+            x = white_region.get('x')
+            y = white_region.get('y') 
             z = self.z_height
             roll = 0.0  # Default orientation
             pitch = 1.5  # Look down towards surface
@@ -1022,9 +1022,9 @@ def create_behavior_from_config(config):
             return PickUp(behavior_name)
         elif behavior_type == 'place_down':
             # Allow custom place coordinates from config
-            place_x = config.get('place_x', 0.15)
-            place_y = config.get('place_y', -0.15) 
-            place_z = config.get('place_z', 0.18)
+            place_x = config.get('place_x')
+            place_y = config.get('place_y') 
+            place_z = config.get('place_z')
             return PlaceDown(behavior_name, place_x, place_y, place_z)
         elif behavior_type == 'open_gripper':
             return OpenGripper(behavior_name)
