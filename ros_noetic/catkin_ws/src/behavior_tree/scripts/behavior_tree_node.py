@@ -80,9 +80,11 @@ class DetectObjects(py_trees.behaviour.Behaviour):
                 # Store additional metadata in blackboard
                 if 'white_region' in yolo_data and yolo_data['white_region']:
                     self.blackboard.set('white_region', yolo_data['white_region'])
+                    rospy.loginfo(f"📋 Blackboard updated - white_region: ({yolo_data['white_region'].get('x', 'N/A'):.3f}, {yolo_data['white_region'].get('y', 'N/A'):.3f})")
                 
                 if 'timestamp' in yolo_data:
                     self.blackboard.set('detection_timestamp', yolo_data['timestamp'])
+                    rospy.loginfo(f"📋 Blackboard updated - detection_timestamp: {yolo_data['timestamp']}")
                     
             elif isinstance(yolo_data, list):
                 # Fallback for older data format (direct array)
@@ -115,6 +117,19 @@ class DetectObjects(py_trees.behaviour.Behaviour):
             
             # Store detection data in blackboard for other behaviors to use
             self.blackboard.set('detected_objects', self.detected_objects)
+            
+            # Debug: Print blackboard contents when updated
+            rospy.loginfo("📋 Blackboard updated - Current contents:")
+            rospy.loginfo(f"  - detected_objects: {len(self.detected_objects)} items")
+            white_region = self.blackboard.get('white_region')
+            if white_region:
+                rospy.loginfo(f"  - white_region: ({white_region.get('x', 'N/A'):.3f}, {white_region.get('y', 'N/A'):.3f})")
+            else:
+                rospy.loginfo("  - white_region: Not detected")
+            detection_timestamp = self.blackboard.get('detection_timestamp')
+            if detection_timestamp:
+                rospy.loginfo(f"  - detection_timestamp: {detection_timestamp}")
+            
             return py_trees.common.Status.SUCCESS
         else:
             self.logger.info("🔍 No objects detected, continuing to search...")
@@ -188,6 +203,12 @@ class PickUp(py_trees.behaviour.Behaviour):
                 # Remove picked object from detected list
                 detected_objects.remove(target_object)
                 self.blackboard.set('detected_objects', detected_objects)
+                
+                # Debug: Print blackboard contents when updated
+                rospy.loginfo("📋 Blackboard updated after pickup:")
+                rospy.loginfo(f"  - picked_object: {target_object.get('class', 'unknown')} {target_object.get('color', 'unknown')}")
+                rospy.loginfo(f"  - detected_objects: {len(detected_objects)} items remaining")
+                
                 return py_trees.common.Status.SUCCESS
             else:
                 self.logger.error(f"❌ Pick up failed: {response.message}")
@@ -262,6 +283,13 @@ class PlaceDown(py_trees.behaviour.Behaviour):
                 self.logger.info(f"✅ Successfully placed {obj_class} at ({self.place_x:.2f}, {self.place_y:.2f}, {self.place_z:.2f})")
                 # Clear picked object from blackboard
                 self.blackboard.set('picked_object', None)
+                
+                # Debug: Print blackboard contents when updated
+                rospy.loginfo("📋 Blackboard updated after place down:")
+                rospy.loginfo("  - picked_object: Cleared (None)")
+                detected_objects = self.blackboard.get('detected_objects') or []
+                rospy.loginfo(f"  - detected_objects: {len(detected_objects)} items")
+                
                 return py_trees.common.Status.SUCCESS
             else:
                 self.logger.error(f"❌ Place down failed: {response.message}")
@@ -642,6 +670,18 @@ class MoveToWhiteRegion(py_trees.behaviour.Behaviour):
                 self.logger.info(f"✅ Successfully moved to white region")
                 # Reset attempts counter on success
                 self.current_attempts = 0
+                
+                # Debug: Print blackboard contents
+                rospy.loginfo("📋 Blackboard contents after moving to white region:")
+                white_region = self.blackboard.get('white_region')
+                if white_region:
+                    rospy.loginfo(f"  - white_region: ({white_region.get('x', 'N/A'):.3f}, {white_region.get('y', 'N/A'):.3f})")
+                picked_object = self.blackboard.get('picked_object')
+                if picked_object:
+                    rospy.loginfo(f"  - picked_object: {picked_object.get('class', 'unknown')} {picked_object.get('color', 'unknown')}")
+                else:
+                    rospy.loginfo("  - picked_object: None")
+                
                 return py_trees.common.Status.SUCCESS
             else:
                 self.logger.error(f"❌ Failed to move to white region: {response.message}")
