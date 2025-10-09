@@ -27,6 +27,7 @@ Task description: {task_description}
 
 IMPORTANT: Return ONLY valid JSON object with proper formatting, no explanations or additional text.
 Use double quotes for all strings and proper escaping.
+IMPORTANT: Respond in English only.
 
 Requirements:
 1. Root node must be 'sequence' or 'selector'
@@ -404,7 +405,7 @@ class LLMNode:
             )
         
         try:
-            prompt = req.prompt if req.prompt else "Hello, how are you?"
+            prompt = req.prompt if req.prompt else "Hello, how are you? Please respond in English."
             response = self.current_provider.generate_response(prompt)
             
             return LLMQueryResponse(
@@ -429,7 +430,7 @@ class LLMNode:
             )
         
         try:
-            prompt = req.prompt if req.prompt else "Generate a simple JSON object"
+            prompt = req.prompt if req.prompt else "Generate a simple JSON object. Please respond in English."
             schema = json.loads(req.schema) if req.schema else None
             
             response = self.current_provider.generate_json_response(prompt, schema)
