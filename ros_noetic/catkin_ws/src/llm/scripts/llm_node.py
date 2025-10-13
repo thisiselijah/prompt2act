@@ -18,9 +18,31 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from setup import OpenAIProvider, GeminiProvider
 
+# ============================================================================
+# COMPILED REGEX PATTERNS (Pre-compiled for better performance)
+# ============================================================================
+# Code block patterns for JSON extraction
+REGEX_CODE_BLOCKS = [
+    re.compile(r'```(?:json|JSON)?\s*(\{.*?\})\s*```', re.DOTALL | re.IGNORECASE),
+    re.compile(r'`{3,}\s*(?:json|JSON)?\s*(\{.*?\})\s*`{3,}', re.DOTALL | re.IGNORECASE),
+    re.compile(r'~~~(?:json|JSON)?\s*(\{.*?\})\s*~~~', re.DOTALL | re.IGNORECASE),
+    re.compile(r'<code[^>]*>\s*(\{.*?\})\s*</code>', re.DOTALL | re.IGNORECASE),
+    re.compile(r'(?:json|JSON):\s*(\{.*?\})', re.DOTALL | re.IGNORECASE),
+]
 
+# JSON cleaning patterns
+REGEX_JSON_CLEANING = {
+    'single_quotes': re.compile(r"(?<!\\)'([^']*?)(?<!\\)'"),
+    'trailing_commas': re.compile(r',(\s*[}\]])'),
+    'pre_json_text': re.compile(r'^.*?(?=\{)', re.DOTALL),
+    'post_json_text': re.compile(r'\}.*?$', re.DOTALL),
+    'quotes_pattern': re.compile(r'"[^"]*"'),
+    'brace_start': re.compile(r'\{'),
+}
 
-# Global constants for behavior tree generation
+# ============================================================================
+# GLOBAL CONSTANTS FOR BEHAVIOR TREE GENERATION
+# ============================================================================
 BEHAVIOR_TREE_PROMPT_TEMPLATE = """
 Generate a behavior tree JSON configuration for a robot manipulation task.
 
@@ -317,6 +339,20 @@ class LLMNode:
             rospy.logwarn(f"Behavior tree assembly service not available: {e}")
             self.behavior_tree_assembly_client = None
     
+    def _parse_and_format_json(self, json_string: str) -> tuple:
+        """
+        Parse and format JSON string
+        Returns: (success: bool, formatted_json: str, error_message: str)
+        """
+        try:
+            parsed_json = json.loads(json_string)
+            formatted_json = json.dumps(parsed_json, indent=2, ensure_ascii=False)
+            return True, formatted_json, ""
+        except json.JSONDecodeError as e:
+            return False, "", f"JSON parsing error: {str(e)}"
+        except TypeError as e:
+            return False, "", f"JSON type error: {str(e)}"
+    
     def _call_behavior_tree_assembly(self, json_string):
         """
         Call the behavior tree assembly service with the generated JSON
@@ -390,15 +426,15 @@ class LLMNode:
     def prompt_callback(self, msg):
         """Handle incoming prompts from topic"""
         if not self.current_provider:
-            rospy.logwarn("No LLM provider initialized")
+            rospy.logwarn_throttle(5.0, "No LLM provider initialized")
             return
         
         prompt = msg.data
-        rospy.loginfo(f"Received prompt: {prompt[:100]}...")
+        rospy.logdebug(f"Received prompt: {prompt[:100]}...")
         
         try:
             response = self.current_provider.generate_response(prompt)
-            rospy.loginfo(f"Generated response: {response[:100]}...")
+            rospy.logdebug(f"Generated response: {response[:100]}...")
             
             # Publish response
             response_msg = String()
@@ -406,20 +442,20 @@ class LLMNode:
             self.response_pub.publish(response_msg)
             
         except Exception as e:
-            rospy.logerr(f"Error generating response: {e}")
+            rospy.logerr_throttle(5.0, f"Error generating response: {e}")
     
     def json_prompt_callback(self, msg):
         """Handle incoming JSON prompts from topic"""
         if not self.current_provider:
-            rospy.logwarn("No LLM provider initialized")
+            rospy.logwarn_throttle(5.0, "No LLM provider initialized")
             return
         
         prompt = msg.data
-        rospy.loginfo(f"Received JSON prompt: {prompt[:100]}...")
+        rospy.logdebug(f"Received JSON prompt: {prompt[:100]}...")
         
         try:
             response = self.current_provider.generate_json_response(prompt)
-            rospy.loginfo(f"Generated JSON response: {response[:100]}...")
+            rospy.logdebug(f"Generated JSON response: {response[:100]}...")
             
             # Publish JSON response
             response_msg = String()
@@ -427,7 +463,7 @@ class LLMNode:
             self.json_response_pub.publish(response_msg)
             
         except Exception as e:
-            rospy.logerr(f"Error generating JSON response: {e}")
+            rospy.logerr_throttle(5.0, f"Error generating JSON response: {e}")
     
     def query_service_callback(self, req):
         """Service callback for direct LLM queries"""
@@ -447,11 +483,19 @@ class LLMNode:
                 response=response, 
                 error_message=""
             )
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError) as e:
+            rospy.logerr_throttle(5.0, f"Query service error: {e}")
             return LLMQueryResponse(
                 success=False, 
                 response="", 
-                error_message=str(e)
+                error_message=f"Input error: {str(e)}"
+            )
+        except Exception as e:
+            rospy.logerr_throttle(5.0, f"Unexpected query service error: {e}")
+            return LLMQueryResponse(
+                success=False, 
+                response="", 
+                error_message=f"Service error: {str(e)}"
             )
     
     def json_query_service_callback(self, req):
@@ -469,12 +513,11 @@ class LLMNode:
             
             response = self.current_provider.generate_json_response(prompt, schema)
             
-            # Format JSON response for better readability
-            try:
-                parsed_json = json.loads(response)
-                formatted_response = json.dumps(parsed_json, indent=2, ensure_ascii=False)
-            except (json.JSONDecodeError, TypeError):
-                # If response is not valid JSON or parsing fails, return as-is
+            # Format JSON response for better readability using shared function
+            success, formatted_response, error_msg = self._parse_and_format_json(response)
+            
+            if not success:
+                # If parsing fails, return original response
                 formatted_response = response
             
             return LLMJsonQueryResponse(
@@ -482,11 +525,26 @@ class LLMNode:
                 json_response=formatted_response, 
                 error_message=""
             )
-        except Exception as e:
+        except json.JSONDecodeError as e:
+            rospy.logerr_throttle(5.0, f"JSON schema parsing error: {e}")
             return LLMJsonQueryResponse(
                 success=False, 
                 json_response="", 
-                error_message=str(e)
+                error_message=f"Invalid schema: {str(e)}"
+            )
+        except (ValueError, TypeError, AttributeError) as e:
+            rospy.logerr_throttle(5.0, f"JSON query service error: {e}")
+            return LLMJsonQueryResponse(
+                success=False, 
+                json_response="", 
+                error_message=f"Input error: {str(e)}"
+            )
+        except Exception as e:
+            rospy.logerr_throttle(5.0, f"Unexpected JSON query error: {e}")
+            return LLMJsonQueryResponse(
+                success=False, 
+                json_response="", 
+                error_message=f"Service error: {str(e)}"
             )
     
     def generate_behavior_tree_callback(self, req):
@@ -509,12 +567,12 @@ class LLMNode:
             
             # Generate JSON response (schema validation not supported in current SDK version)
             try:
-                rospy.loginfo("Generating behavior tree JSON...")
+                rospy.logdebug("Generating behavior tree JSON...")
                 response = self.current_provider.generate_json_response(behavior_tree_prompt)
-                rospy.loginfo("JSON generation successful")
+                rospy.logdebug("JSON generation successful")
                 
             except Exception as generation_error:
-                rospy.logerr(f"JSON generation failed: {generation_error}")
+                rospy.logerr_throttle(5.0, f"JSON generation failed: {generation_error}")
                 return GenerateBehaviorTreeResponse(
                     success=False, 
                     behavior_tree_json="", 
@@ -523,7 +581,7 @@ class LLMNode:
             
             # Check if response is empty or None
             if not response or response.strip() == "":
-                rospy.logerr("Empty response received from LLM provider")
+                rospy.logerr_throttle(5.0, "Empty response received from LLM provider")
                 return GenerateBehaviorTreeResponse(
                     success=False, 
                     behavior_tree_json="", 
@@ -547,11 +605,11 @@ class LLMNode:
                 
                 # Basic validation of the structure
                 if 'type' not in parsed_json or 'name' not in parsed_json:
-                    rospy.logwarn("Generated JSON missing required fields (type/name)")
+                    rospy.logwarn_throttle(5.0, "Generated JSON missing required fields (type/name)")
                 
                 # Check for irrelevant instructions (empty behavior tree)
                 if 'children' in parsed_json and len(parsed_json['children']) == 0:
-                    rospy.loginfo("Irrelevant instruction detected - returning empty behavior tree")
+                    rospy.logdebug("Irrelevant instruction detected - returning empty behavior tree")
                     return GenerateBehaviorTreeResponse(
                         success=True, 
                         behavior_tree_json=formatted_json, 
@@ -562,14 +620,14 @@ class LLMNode:
                 assembly_success, assembly_message = self._call_behavior_tree_assembly(formatted_json)
                 
                 if assembly_success:
-                    rospy.loginfo(f"Behavior tree assembled successfully: {assembly_message}")
+                    rospy.loginfo(f"✅ Behavior tree assembled: {assembly_message}")
                     return GenerateBehaviorTreeResponse(
                         success=True, 
                         behavior_tree_json=formatted_json, 
                         error_message=""
                     )
                 else:
-                    rospy.logwarn(f"Behavior tree assembly failed: {assembly_message}")
+                    rospy.logwarn_throttle(5.0, f"⚠️ Behavior tree assembly failed: {assembly_message}")
                     # Still return success for JSON generation, but include assembly warning
                     return GenerateBehaviorTreeResponse(
                         success=True, 
@@ -578,13 +636,11 @@ class LLMNode:
                     )
                 
             except json.JSONDecodeError as e:
-                rospy.logerr(f"Generated response is not valid JSON: {e}")
-                rospy.logerr(f"Original response length: {len(response)} chars")
-                rospy.logerr(f"Cleaned response length: {len(cleaned_response)} chars")
-
-                # Show first 200 chars of each for debugging
-                rospy.logerr(f"Original response (first 200 chars): {response[:200]}")
-                rospy.logerr(f"Cleaned response (first 200 chars): {cleaned_response[:200]}")
+                rospy.logerr_throttle(5.0, f"Generated response is not valid JSON: {e}")
+                rospy.logdebug(f"Original response length: {len(response)} chars")
+                rospy.logdebug(f"Cleaned response length: {len(cleaned_response)} chars")
+                rospy.logdebug(f"Original response (first 200 chars): {response[:200]}")
+                rospy.logdebug(f"Cleaned response (first 200 chars): {cleaned_response[:200]}")
 
                 return GenerateBehaviorTreeResponse(
                     success=False,
@@ -593,11 +649,11 @@ class LLMNode:
                 )
                 
         except Exception as e:
-            rospy.logerr(f"Error generating behavior tree: {e}")
+            rospy.logerr_throttle(5.0, f"Error generating behavior tree: {e}")
             return GenerateBehaviorTreeResponse(
                 success=False, 
                 behavior_tree_json="", 
-                error_message=str(e)
+                error_message=f"Unexpected error: {str(e)}"
             )
     
     def status_service_callback(self, req):
@@ -636,18 +692,10 @@ class LLMNode:
             if not isinstance(response, str):
                 response = str(response)
             
-            # First, try to find JSON within code blocks
-            code_block_patterns = [
-                r'```(?:json|JSON)?\s*(\{.*?\})\s*```',  # Standard markdown
-                r'`{3,}\s*(?:json|JSON)?\s*(\{.*?\})\s*`{3,}',  # Flexible backtick count
-                r'~~~(?:json|JSON)?\s*(\{.*?\})\s*~~~',  # Alternative code block style
-                r'<code[^>]*>\s*(\{.*?\})\s*</code>',  # HTML code tags
-                r'(?:json|JSON):\s*(\{.*?\})',  # Label prefix
-            ]
-            
-            for pattern in code_block_patterns:
+            # First, try to find JSON within code blocks using pre-compiled patterns
+            for pattern in REGEX_CODE_BLOCKS:
                 try:
-                    json_blocks = re.findall(pattern, response, re.DOTALL | re.IGNORECASE)
+                    json_blocks = pattern.findall(response)
                     if json_blocks:
                         candidate = json_blocks[0].strip()
                         if self._is_valid_json_structure(candidate):
@@ -658,9 +706,9 @@ class LLMNode:
             # Look for JSON objects in the text with brace matching
             json_candidates = []
             
-            # Find all potential JSON start positions
+            # Find all potential JSON start positions using pre-compiled pattern
             try:
-                for match in re.finditer(r'\{', response):
+                for match in REGEX_JSON_CLEANING['brace_start'].finditer(response):
                     start_idx = match.start()
                     json_str = self._extract_balanced_braces(response, start_idx)
                     if json_str and self._is_valid_json_structure(json_str):
@@ -731,8 +779,8 @@ class LLMNode:
         if not (text.startswith('{') and text.endswith('}')):
             return False
         
-        # Should contain basic JSON patterns
-        has_quotes = bool(re.search(r'"[^"]*"', text))
+        # Should contain basic JSON patterns using pre-compiled regex
+        has_quotes = bool(REGEX_JSON_CLEANING['quotes_pattern'].search(text))
         has_colons = ':' in text
         
         return has_quotes and has_colons
@@ -740,9 +788,9 @@ class LLMNode:
     def _clean_response_text(self, response: str) -> str:
         """Clean response text while preserving JSON formatting"""
         try:
-            # Remove common prefixes/suffixes that LLMs might add
-            response = re.sub(r'^.*?(?=\{)', '', response, flags=re.DOTALL)  # Remove text before first {
-            response = re.sub(r'\}.*?$', '}', response, flags=re.DOTALL)     # Remove text after last }
+            # Remove common prefixes/suffixes that LLMs might add using pre-compiled patterns
+            response = REGEX_JSON_CLEANING['pre_json_text'].sub('', response)   # Remove text before first {
+            response = REGEX_JSON_CLEANING['post_json_text'].sub('}', response) # Remove text after last }
             
             # Only normalize excessive whitespace, but preserve reasonable formatting
             # Remove leading/trailing whitespace from each line, but keep line breaks
@@ -763,15 +811,14 @@ class LLMNode:
                 json_str = str(json_str)
             
             # Fix common JSON formatting issues without destroying formatting
-            # Replace single quotes with double quotes (but not inside strings)
-            json_str = re.sub(r"(?<!\\)'([^']*?)(?<!\\)'", r'"\1"', json_str)
+            # Replace single quotes with double quotes (but not inside strings) using pre-compiled pattern
+            json_str = REGEX_JSON_CLEANING['single_quotes'].sub(r'"\1"', json_str)
             
-            # Fix trailing commas before closing braces/brackets
-            json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+            # Fix trailing commas before closing braces/brackets using pre-compiled pattern
+            json_str = REGEX_JSON_CLEANING['trailing_commas'].sub(r'\1', json_str)
             
             # Validate JSON structure first
             try:
-                import json
                 parsed = json.loads(json_str)
                 # Return the cleaned but not yet formatted version for parsing
                 return json.dumps(parsed, separators=(',', ':'))
