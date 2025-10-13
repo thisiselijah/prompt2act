@@ -222,13 +222,13 @@ class PickUp(py_trees.behaviour.Behaviour):
 class PlaceDown(py_trees.behaviour.Behaviour):
     """Behavior to place objects using robot control service"""
     
-    def __init__(self, name, place_x=0.15, place_y=-0.15, place_z=0.18):
+    def __init__(self, name, place_x=None, place_y=None, place_z=0.18):
         super(PlaceDown, self).__init__(name)
         self.logger = py_trees.logging.Logger(name)
         self.robot_service = None
-        self.place_x = place_x
-        self.place_y = place_y
-        self.place_z = place_z
+        self.place_x = place_x  # Allow None to use blackboard coordinates
+        self.place_y = place_y  # Allow None to use blackboard coordinates
+        self.place_z = place_z  # Default to 0.18
         # Initialize blackboard for py_trees 0.7.x compatibility
         self.blackboard = py_trees.blackboard.Blackboard()
         
@@ -263,6 +263,19 @@ class PlaceDown(py_trees.behaviour.Behaviour):
                 self.logger.warn("⚠️ No object available to place down")
                 # Return RUNNING to wait for an object to be picked
                 return py_trees.common.Status.RUNNING
+            
+            # Get place coordinates from blackboard white_region if not specified
+            if self.place_x is None or self.place_y is None:
+                white_region = self.blackboard.get('white_region')
+                if white_region:
+                    self.place_x = white_region.get('x', 0.15)
+                    self.place_y = white_region.get('y', -0.15)
+                    self.logger.info(f"📍 Using white region coordinates from blackboard: ({self.place_x:.3f}, {self.place_y:.3f})")
+                else:
+                    # Fallback to default coordinates if white region not available
+                    self.place_x = 0.15
+                    self.place_y = -0.15
+                    self.logger.warn("⚠️ No white region found in blackboard, using default coordinates")
                 
             # Use original object orientation for placing
             roll = picked_object.get('roll', 0.0)
@@ -1021,10 +1034,11 @@ def create_behavior_from_config(config):
         elif behavior_type == 'pick_up':
             return PickUp(behavior_name)
         elif behavior_type == 'place_down':
-            # Allow custom place coordinates from config
-            place_x = config.get('place_x')
-            place_y = config.get('place_y') 
-            place_z = config.get('place_z')
+            # Allow custom place coordinates from config (optional)
+            # If not specified, will use blackboard white_region coordinates
+            place_x = config.get('place_x')  # None if not specified - will use blackboard
+            place_y = config.get('place_y')  # None if not specified - will use blackboard
+            place_z = config.get('place_z', 0.18)  # Default to 0.18
             return PlaceDown(behavior_name, place_x, place_y, place_z)
         elif behavior_type == 'open_gripper':
             return OpenGripper(behavior_name)
