@@ -133,6 +133,13 @@ def image_callback(msg):
         M = cv2.getPerspectiveTransform(src_pts, dst_pts)
     else:
         return
+    
+    # 準備 ArUco 標記資訊供其他節點使用
+    aruco_info = {
+        "detected": True,
+        "aruco0_center": aruco_points.get(0, [0, 0]).tolist() if 0 in aruco_points else None,
+        "all_markers": {int(marker_id): aruco_points[marker_id].tolist() for marker_id in aruco_points}
+    }
 
     # YOLO 偵測
     results = model(frame, verbose=False)[0]
@@ -208,6 +215,7 @@ def image_callback(msg):
     output = {
         "detections": detections_list,
         "white_region": white_region_coords if white_region_coords else None,
+        "aruco_markers": aruco_info,  # 新增：ArUco 標記資訊
         "timestamp": rospy.Time.now().to_sec(),
         "frame_count": getattr(image_callback, 'frame_count', 0)
     }

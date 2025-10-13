@@ -85,20 +85,22 @@ except Exception as e:
     rospy.logerr(f"❌ 攝影機初始化時發生錯誤: {e}")
 
 # ========== ArUco 設定 ==========
-aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-aruco_params = cv2.aruco.DetectorParameters()
+# ArUco 標記檢測已移至 yolo_detection_node 進行，避免重複計算
+# aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+# aruco_params = cv2.aruco.DetectorParameters()
 TABLE_WIDTH_CM = 23
 TABLE_HEIGHT_CM = 30
 
 # ========== YOLO 偵測結果 ==========
 detected_objects = []  # 當前偵測到的物件
 white_region_coords = None  # 全域變數，只存一次
+aruco_markers_info = None  # 全域變數，儲存 ArUco 標記資訊
 
 # ========== Debug Mode ==========
 debug_mode_enabled = False  # Global flag for debug mode
 
 def yolo_result_callback(msg):
-    global detected_objects, white_region_coords
+    global detected_objects, white_region_coords, aruco_markers_info
     try:
         data = json.loads(msg.data)
         detected_objects = data.get("detections", [])
@@ -108,6 +110,9 @@ def yolo_result_callback(msg):
             white_region_coords = data.get("white_region", None)
             if white_region_coords is not None:
                 rospy.loginfo(f"白色區塊座標已儲存: {white_region_coords}")
+        
+        # 接收 ArUco 標記資訊
+        aruco_markers_info = data.get("aruco_markers", None)
 
     except Exception as e:
         rospy.logerr(f"解析 YOLO 偵測結果失敗: {e}")
@@ -241,7 +246,7 @@ def draw_debug_info(frame, detected_objects, white_region_coords):
 output_frame = None
 
 def process_frames():
-    global output_frame, camera_available, camera, camera_error_logged, debug_mode_enabled
+    global output_frame, camera_available, camera, camera_error_logged, debug_mode_enabled, aruco_markers_info
     while not rospy.is_shutdown() and RUNNING:
         frame = None
         
@@ -259,24 +264,19 @@ def process_frames():
                 else:
                     # 攝影機讀取成功，重置錯誤標記
                     camera_error_logged = False
-                    # 攝影機讀取成功，進行正常處理
-                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    corners, ids, _ = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=aruco_params)
-
-                    # Calculate perspective transform if ArUco markers detected
+                    
+                    # 使用從 YOLO 節點接收到的 ArUco 標記資訊來計算透視變換矩陣
                     M = None
-                    if ids is not None and len(ids) >= 4:
-                        id_list = ids.flatten()
-                        aruco_points = {}
-                        for i, corner in enumerate(corners):
-                            aruco_points[id_list[i]] = corner[0].mean(axis=0)
-                        
-                        if all(k in aruco_points for k in [0, 1, 2, 3]):
+                    if aruco_markers_info and aruco_markers_info.get("detected"):
+                        all_markers = aruco_markers_info.get("all_markers", {})
+                        # 檢查是否有足夠的標記點 (需要 ID 0, 1, 2, 3)
+                        required_ids = ['0', '1', '2', '3']
+                        if all(marker_id in all_markers for marker_id in required_ids):
                             src_pts = np.array([
-                                aruco_points[3],  # 左上
-                                aruco_points[2],  # 右上
-                                aruco_points[1],  # 右下
-                                aruco_points[0],  # 左下
+                                all_markers['3'],  # 左上
+                                all_markers['2'],  # 右上
+                                all_markers['1'],  # 右下
+                                all_markers['0'],  # 左下
                             ], dtype="float32")
                             
                             dst_pts = np.array([
@@ -293,9 +293,6 @@ def process_frames():
                         pts = np.array(obj["pts"], dtype=int).reshape((-1, 1, 2))
                         label = obj["label"]
                         cx, cy = int(obj["cx"]), int(obj["cy"])
-
-                        # 印出當前物件的中心座標
-                        #print(f"偵測到物件: {label}, cx: {cx}, cy: {cy}")
 
                         color = (255, 0, 0) if label == "blue_block" else (0, 0, 255)
                         cv2.polylines(frame, [pts], isClosed=True, color=color, thickness=2)
