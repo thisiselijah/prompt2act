@@ -149,36 +149,58 @@ def draw_coordinate_axes(frame, M, scale=0.1):
         scale: Length of axes in normalized coordinates (0-1)
     """
     try:
+        # 確保 M 不是 None
+        if M is None:
+            rospy.logwarn_throttle(5.0, "⚠️ Cannot draw coordinate axes: M is None")
+            return
+        
+        # Compute inverse transform
+        M_inv = np.linalg.inv(M)
+        
         # Origin point (0, 0) in world coordinates
         origin_world = np.array([[[0.0, 0.0]]], dtype='float32')
-        origin_pixel = cv2.perspectiveTransform(origin_world, np.linalg.inv(M))
+        origin_pixel = cv2.perspectiveTransform(origin_world, M_inv)
         ox, oy = int(origin_pixel[0][0][0]), int(origin_pixel[0][0][1])
         
         # X-axis endpoint
         x_axis_world = np.array([[[scale, 0.0]]], dtype='float32')
-        x_axis_pixel = cv2.perspectiveTransform(x_axis_world, np.linalg.inv(M))
+        x_axis_pixel = cv2.perspectiveTransform(x_axis_world, M_inv)
         xx, xy = int(x_axis_pixel[0][0][0]), int(x_axis_pixel[0][0][1])
         
         # Y-axis endpoint
         y_axis_world = np.array([[[0.0, scale]]], dtype='float32')
-        y_axis_pixel = cv2.perspectiveTransform(y_axis_world, np.linalg.inv(M))
+        y_axis_pixel = cv2.perspectiveTransform(y_axis_world, M_inv)
         yx, yy = int(y_axis_pixel[0][0][0]), int(y_axis_pixel[0][0][1])
         
-        # Draw X-axis (Red)
-        cv2.arrowedLine(frame, (ox, oy), (xx, xy), (0, 0, 255), 3, tipLength=0.3)
-        cv2.putText(frame, "X", (xx + 10, xy), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        # Draw X-axis (Red) with thicker line
+        cv2.arrowedLine(frame, (ox, oy), (xx, xy), (0, 0, 255), 4, tipLength=0.3)
+        cv2.putText(frame, "X", (xx + 15, xy), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
         
-        # Draw Y-axis (Green)
-        cv2.arrowedLine(frame, (ox, oy), (yx, yy), (0, 255, 0), 3, tipLength=0.3)
-        cv2.putText(frame, "Y", (yx, yy + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        # Draw Y-axis (Green) with thicker line
+        cv2.arrowedLine(frame, (ox, oy), (yx, yy), (0, 255, 0), 4, tipLength=0.3)
+        cv2.putText(frame, "Y", (yx, yy + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
         
-        # Draw origin point
-        cv2.circle(frame, (ox, oy), 5, (255, 255, 255), -1)
-        cv2.putText(frame, "Origin (0,0)", (ox + 10, oy - 10), 
+        # Draw origin point with enhanced visibility
+        cv2.circle(frame, (ox, oy), 8, (255, 255, 255), -1)
+        cv2.circle(frame, (ox, oy), 10, (0, 0, 0), 2)
+        
+        # Draw origin label with background
+        label = "Origin (0,0)"
+        (label_w, label_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+        
+        # Semi-transparent background
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (ox + 8, oy - label_h - 18), 
+                     (ox + label_w + 18, oy - 3), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+        
+        cv2.putText(frame, label, (ox + 12, oy - 8), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         
+        rospy.logdebug("✅ Coordinate axes drawn successfully")
+        
     except Exception as e:
-        rospy.logwarn(f"Failed to draw coordinate axes: {e}")
+        rospy.logwarn_throttle(5.0, f"Failed to draw coordinate axes: {e}")
 
 def draw_debug_info(frame, detected_objects, white_region_coords):
     """
@@ -189,12 +211,22 @@ def draw_debug_info(frame, detected_objects, white_region_coords):
         white_region_coords: White region coordinates
     """
     try:
-        # Draw title
+        import math
+        
+        # Draw title with semi-transparent background
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (5, 5), (350, 40), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
         cv2.putText(frame, "DEBUG MODE", (10, 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
+        
+        # Draw detected objects count
+        obj_count_text = f"Objects: {len(detected_objects)}"
+        cv2.putText(frame, obj_count_text, (10, 60), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
         
         # Draw detected objects info
-        y_offset = 60
+        y_offset = 90
         for i, obj in enumerate(detected_objects):
             label = obj.get('label', 'unknown')
             color_name = obj.get('color', 'unknown')
@@ -204,43 +236,59 @@ def draw_debug_info(frame, detected_objects, white_region_coords):
             cx = obj.get('cx', 0)
             cy = obj.get('cy', 0)
             roll = obj.get('roll', 0.0)
+            confidence = obj.get('confidence', 0.0)
             
-            # Draw info text
-            info_text = f"{i+1}. {color_name} {class_name}"
+            # Draw semi-transparent background for each object info
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (5, y_offset - 18), (450, y_offset + 58), (0, 0, 0), -1)
+            cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+            
+            # Draw info text with confidence
+            info_text = f"{i+1}. {color_name} {class_name} (conf: {confidence:.2f})"
             cv2.putText(frame, info_text, (10, y_offset), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
             y_offset += 20
             
             coord_text = f"   Robot: ({x:.3f}, {y:.3f}m)"
             cv2.putText(frame, coord_text, (10, y_offset), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
-            y_offset += 15
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+            y_offset += 17
             
             pixel_text = f"   Pixel: ({cx}, {cy})"
             cv2.putText(frame, pixel_text, (10, y_offset), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
             y_offset += 15
             
-            roll_text = f"   Roll: {roll:.3f} rad"
+            # Convert roll to degrees for better readability
+            roll_deg = math.degrees(roll)
+            roll_text = f"   Roll: {roll:.3f} rad ({roll_deg:.1f}°)"
             cv2.putText(frame, roll_text, (10, y_offset), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
-            y_offset += 25
+            y_offset += 30
             
-            # Draw crosshair at object center
+            # Draw crosshair at object center with label
             cv2.drawMarker(frame, (cx, cy), (0, 255, 255), 
-                          cv2.MARKER_CROSS, 15, 2)
+                          cv2.MARKER_CROSS, 20, 2)
+            cv2.circle(frame, (cx, cy), 3, (255, 255, 255), -1)
         
         # Draw white region info
         if white_region_coords:
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (5, y_offset - 18), (400, y_offset + 30), (0, 0, 0), -1)
+            cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+            
             cv2.putText(frame, f"White Region:", (10, y_offset), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
             y_offset += 20
             white_text = f"  ({white_region_coords['x']:.3f}, {white_region_coords['y']:.3f}m)"
             cv2.putText(frame, white_text, (10, y_offset), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+        else:
+            cv2.putText(frame, "White Region: Not detected", (10, y_offset), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 128, 128), 1)
         
     except Exception as e:
-        rospy.logwarn(f"Failed to draw debug info: {e}")
+        rospy.logwarn_throttle(5.0, f"Failed to draw debug info: {e}")
 
 # ========== 背景影像處理 ==========
 output_frame = None
@@ -249,6 +297,7 @@ def process_frames():
     global output_frame, camera_available, camera, camera_error_logged, debug_mode_enabled, aruco_markers_info
     while not rospy.is_shutdown() and RUNNING:
         frame = None
+        M = None  # 移到外層，確保在所有情況下都可用
         
         # 檢查攝影機是否可用
         if camera_available and camera is not None:
@@ -266,17 +315,16 @@ def process_frames():
                     camera_error_logged = False
                     
                     # 使用從 YOLO 節點接收到的 ArUco 標記資訊來計算透視變換矩陣
-                    M = None
                     if aruco_markers_info and aruco_markers_info.get("detected"):
                         all_markers = aruco_markers_info.get("all_markers", {})
-                        # 檢查是否有足夠的標記點 (需要 ID 0, 1, 2, 3)
-                        required_ids = ['0', '1', '2', '3']
+                        # 檢查是否有足夠的標記點 (需要 ID 0, 1, 2, 3) - 修正：使用整數而非字串
+                        required_ids = [0, 1, 2, 3]
                         if all(marker_id in all_markers for marker_id in required_ids):
                             src_pts = np.array([
-                                all_markers['3'],  # 左上
-                                all_markers['2'],  # 右上
-                                all_markers['1'],  # 右下
-                                all_markers['0'],  # 左下
+                                all_markers[3],  # 左上
+                                all_markers[2],  # 右上
+                                all_markers[1],  # 右下
+                                all_markers[0],  # 左下
                             ], dtype="float32")
                             
                             dst_pts = np.array([
@@ -287,6 +335,10 @@ def process_frames():
                             ], dtype="float32")
                             
                             M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+                            rospy.logdebug("✅ 成功計算透視變換矩陣")
+                        else:
+                            rospy.logwarn_throttle(10.0, 
+                                f"⚠️ ArUco 標記不足，需要 ID 0-3，目前檢測到: {list(all_markers.keys())}")
 
                     # 畫出 YOLO 偵測框（使用最新 detected_objects）
                     for obj in detected_objects:
@@ -300,11 +352,6 @@ def process_frames():
                         cv2.putText(frame, label, (cx, cy - 10),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                     
-                    # Draw debug information if debug mode is enabled
-                    if debug_mode_enabled:
-                        if M is not None:
-                            draw_coordinate_axes(frame, M, scale=0.2)
-                        draw_debug_info(frame, detected_objects, white_region_coords)
             except Exception as e:
                 if not camera_error_logged:
                     rospy.logerr(f"攝影機處理時發生錯誤: {e}")
@@ -313,8 +360,19 @@ def process_frames():
                 frame = no_signal_frame.copy()
         else:
             # 攝影機不可用，使用 no-signal 圖片
-            # 直接使用原始的 no-signal 圖片，不添加任何文字
             frame = no_signal_frame.copy()
+
+        # Debug mode 繪製（移到外層，適用於所有情況）
+        if frame is not None and debug_mode_enabled:
+            if M is not None:
+                draw_coordinate_axes(frame, M, scale=0.2)
+            else:
+                # 即使沒有 M，也顯示提示訊息
+                cv2.putText(frame, "DEBUG MODE - Waiting for ArUco markers", 
+                           (10, frame.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 
+                           0.6, (0, 255, 255), 2)
+            
+            draw_debug_info(frame, detected_objects, white_region_coords)
 
         # 更新全域影像
         if frame is not None:
