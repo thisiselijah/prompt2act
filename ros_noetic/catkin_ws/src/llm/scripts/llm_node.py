@@ -289,15 +289,10 @@ class LLMNode:
         }
         self.current_provider = None
         
-        # Create output directory for behavior trees
-        self.output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'behavior_trees_output')
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
-            rospy.loginfo(f"Created behavior tree output directory: {self.output_dir}")
-        
         # ROS publishers and subscribers
         self.response_pub = rospy.Publisher('/llm_response', String, queue_size=10)
         self.json_response_pub = rospy.Publisher('/llm_json_response', String, queue_size=10)
+        self.behavior_tree_pub = rospy.Publisher('/behavior_tree_json', String, queue_size=10)  # Publisher for web display
         self.prompt_sub = rospy.Subscriber('/llm_prompt', String, self.prompt_callback)
         self.json_prompt_sub = rospy.Subscriber('/llm_json_prompt', String, self.json_prompt_callback)
         
@@ -345,37 +340,37 @@ class LLMNode:
             rospy.logerr(f"Failed to call behavior tree assembly service: {e}")
             return False, f"Service call failed: {str(e)}"
     
-    def _save_behavior_tree_to_file(self, behavior_tree_json: str, task_description: str) -> str:
+    def _publish_behavior_tree_for_display(self, behavior_tree_json: str, task_description: str):
         """
-        Save behavior tree JSON to a file with timestamp
+        Publish behavior tree JSON to a topic for web display
         Args:
-            behavior_tree_json (str): The formatted JSON string to save
-            task_description (str): The task description for the filename
-        Returns:
-            str: The absolute path to the saved file
+            behavior_tree_json (str): The formatted JSON string to publish
+            task_description (str): The task description
         """
         try:
-            # Generate filename with timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Parse the behavior tree JSON
+            behavior_tree = json.loads(behavior_tree_json)
             
-            # Sanitize task description for filename (remove special characters)
-            safe_task = re.sub(r'[^\w\s-]', '', task_description)
-            safe_task = re.sub(r'[-\s]+', '_', safe_task)
-            safe_task = safe_task[:50]  # Limit length
+            # Create a message in the format expected by web interface
+            # The web interface expects: {"structure": <tree>, "status": <status>, "timestamp": <time>}
+            timestamp = datetime.now().timestamp()
+            display_data = {
+                "structure": behavior_tree,
+                "status": "generated",  # Initial status when tree is generated
+                "timestamp": timestamp,
+                "task_description": task_description
+            }
             
-            filename = f"behavior_tree_{timestamp}_{safe_task}.json"
-            filepath = os.path.join(self.output_dir, filename)
+            # Publish to topic
+            msg = String()
+            msg.data = json.dumps(display_data, ensure_ascii=False)
+            self.behavior_tree_pub.publish(msg)
             
-            # Write JSON to file
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(behavior_tree_json)
-            
-            rospy.loginfo(f"Behavior tree saved to: {filepath}")
-            return filepath
+            rospy.loginfo(f"✅ Behavior tree published to /behavior_tree_json for web viewing")
+            rospy.loginfo(f"📋 Task: {task_description}")
             
         except Exception as e:
-            rospy.logerr(f"Failed to save behavior tree to file: {e}")
-            return ""
+            rospy.logerr(f"Failed to publish behavior tree for display: {e}")
     
     def initialize_provider(self, provider_type: str) -> bool:
         """Initialize the specified LLM provider"""
@@ -547,12 +542,8 @@ class LLMNode:
                 # Format JSON for better readability in service response
                 formatted_json = json.dumps(parsed_json, indent=2, ensure_ascii=False)
                 
-                # Save behavior tree to file instead of logging to terminal
-                saved_filepath = self._save_behavior_tree_to_file(formatted_json, task_description)
-                if saved_filepath:
-                    rospy.loginfo(f"Behavior tree JSON generated and saved to file: {saved_filepath}")
-                else:
-                    rospy.logwarn("Behavior tree generated but failed to save to file")
+                # Publish behavior tree to web interface for display
+                self._publish_behavior_tree_for_display(formatted_json, task_description)
                 
                 # Basic validation of the structure
                 if 'type' not in parsed_json or 'name' not in parsed_json:
