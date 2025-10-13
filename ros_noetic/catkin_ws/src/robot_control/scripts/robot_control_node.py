@@ -159,7 +159,7 @@ def main():
     Main function to initialize the ROS node and services
     """
     
-    NIRYOROBOT_IP_WIFI = "10.84.204.26"
+    NIRYOROBOT_IP_WIFI = "10.160.102.26"
     NIRYOROBOT_IP_LOCAL = "10.10.10.10"
 
     

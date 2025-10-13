@@ -1,0 +1,10 @@
+{
+  "type": "sequence",
+  "name": "BackToHomeTask",
+  "children": [
+    {
+      "type": "move_to_home",
+      "name": "ReturnHome"
+    }
+  ]
+}

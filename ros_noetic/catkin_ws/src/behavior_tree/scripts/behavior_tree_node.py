@@ -595,7 +595,7 @@ class MoveAboveObject(py_trees.behaviour.Behaviour):
             yaw = 0.0
             
             self.logger.info(f"🎯 Moving above {self.target_color} {self.target_object_class} "
-                           f"at ({x:.3f}, {y:.3f}, {z:.3f}) with {self.z_offset:.3f}m offset")
+                           f"at ({x:.3f}, {y:.3f}, {z:.3f})")
             
             # Send move command to robot
             command = f"move_to_pose:{x},{y},{z},{roll},{pitch},{yaw}"

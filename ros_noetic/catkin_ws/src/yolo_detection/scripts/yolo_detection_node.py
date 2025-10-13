@@ -84,8 +84,8 @@ TABLE_HEIGHT_CM = 29
 
 # --- 座標轉換 ---
 def camera_to_robot_coords(wx, wy):
-    origin_x = 0.2
-    origin_y = -0.1
+    origin_x = 0
+    origin_y = 0
     real_x_cm = wx * TABLE_WIDTH_CM
     real_y_cm = wy * TABLE_HEIGHT_CM
     return origin_x + real_x_cm / 100.0, origin_y + real_y_cm / 100.0
@@ -220,10 +220,10 @@ def image_callback(msg):
     # Publish detection data
     pub_target.publish(json.dumps(output))
     
-    # Log detection summary (focused on required objects only)
-    if detections_list:
-        detection_summary = [f"{d['color']} {d['class']}" for d in detections_list]
-        rospy.loginfo(f"📦 Detected {len(detections_list)} cubes: {detection_summary}")
+    # # Log detection summary (focused on required objects only)
+    # if detections_list:
+    #     detection_summary = [f"{d['color']} {d['class']}" for d in detections_list]
+    #     rospy.loginfo(f"📦 Detected {len(detections_list)} cubes: {detection_summary}")
     
     # Log white region status
     if white_region_coords:
