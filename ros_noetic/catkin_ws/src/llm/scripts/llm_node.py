@@ -11,6 +11,7 @@ from llm.srv import LLMQuery, LLMQueryResponse, LLMJsonQuery, LLMJsonQueryRespon
 import json
 import os
 import re
+from datetime import datetime
 
 # 加入 scripts 資料夾路徑，確保 import 從原本腳本所在目錄載入
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -288,6 +289,12 @@ class LLMNode:
         }
         self.current_provider = None
         
+        # Create output directory for behavior trees
+        self.output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'behavior_trees_output')
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+            rospy.loginfo(f"Created behavior tree output directory: {self.output_dir}")
+        
         # ROS publishers and subscribers
         self.response_pub = rospy.Publisher('/llm_response', String, queue_size=10)
         self.json_response_pub = rospy.Publisher('/llm_json_response', String, queue_size=10)
@@ -337,6 +344,38 @@ class LLMNode:
         except rospy.ServiceException as e:
             rospy.logerr(f"Failed to call behavior tree assembly service: {e}")
             return False, f"Service call failed: {str(e)}"
+    
+    def _save_behavior_tree_to_file(self, behavior_tree_json: str, task_description: str) -> str:
+        """
+        Save behavior tree JSON to a file with timestamp
+        Args:
+            behavior_tree_json (str): The formatted JSON string to save
+            task_description (str): The task description for the filename
+        Returns:
+            str: The absolute path to the saved file
+        """
+        try:
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Sanitize task description for filename (remove special characters)
+            safe_task = re.sub(r'[^\w\s-]', '', task_description)
+            safe_task = re.sub(r'[-\s]+', '_', safe_task)
+            safe_task = safe_task[:50]  # Limit length
+            
+            filename = f"behavior_tree_{timestamp}_{safe_task}.json"
+            filepath = os.path.join(self.output_dir, filename)
+            
+            # Write JSON to file
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(behavior_tree_json)
+            
+            rospy.loginfo(f"Behavior tree saved to: {filepath}")
+            return filepath
+            
+        except Exception as e:
+            rospy.logerr(f"Failed to save behavior tree to file: {e}")
+            return ""
     
     def initialize_provider(self, provider_type: str) -> bool:
         """Initialize the specified LLM provider"""
@@ -507,7 +546,13 @@ class LLMNode:
                 
                 # Format JSON for better readability in service response
                 formatted_json = json.dumps(parsed_json, indent=2, ensure_ascii=False)
-                rospy.loginfo(f"Generated behavior tree JSON:\n{formatted_json}")
+                
+                # Save behavior tree to file instead of logging to terminal
+                saved_filepath = self._save_behavior_tree_to_file(formatted_json, task_description)
+                if saved_filepath:
+                    rospy.loginfo(f"Behavior tree JSON generated and saved to file: {saved_filepath}")
+                else:
+                    rospy.logwarn("Behavior tree generated but failed to save to file")
                 
                 # Basic validation of the structure
                 if 'type' not in parsed_json or 'name' not in parsed_json:
