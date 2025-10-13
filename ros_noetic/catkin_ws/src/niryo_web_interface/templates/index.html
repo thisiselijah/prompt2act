@@ -34,13 +34,22 @@
       <section class="camera-section">
         <div class="camera-header">
           <h2>即時影像</h2>
-          <button
-            class="btn btn-secondary"
-            id="camera-reconnect-btn"
-            onclick="reconnectCamera()"
-          >
-            重新連接
-          </button>
+          <div class="camera-controls">
+            <button
+              class="btn btn-secondary"
+              id="camera-reconnect-btn"
+              onclick="reconnectCamera()"
+            >
+              重新連接
+            </button>
+            <button
+              class="btn btn-secondary"
+              id="debug-mode-btn"
+              onclick="toggleDebugMode()"
+            >
+              🐛 Debug Mode
+            </button>
+          </div>
         </div>
         <div class="camera-container">
           <img

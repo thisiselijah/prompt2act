@@ -94,6 +94,9 @@ TABLE_HEIGHT_CM = 30
 detected_objects = []  # 當前偵測到的物件
 white_region_coords = None  # 全域變數，只存一次
 
+# ========== Debug Mode ==========
+debug_mode_enabled = False  # Global flag for debug mode
+
 def yolo_result_callback(msg):
     global detected_objects, white_region_coords
     try:
@@ -131,11 +134,114 @@ def behavior_tree_callback(msg):
 
 rospy.Subscriber('/behavior_tree_json', String, behavior_tree_callback)
 
+# ========== Debug Mode Drawing Functions ==========
+def draw_coordinate_axes(frame, M, scale=0.1):
+    """
+    Draw coordinate axes on the frame based on perspective transform
+    Args:
+        frame: OpenCV frame
+        M: Perspective transform matrix
+        scale: Length of axes in normalized coordinates (0-1)
+    """
+    try:
+        # Origin point (0, 0) in world coordinates
+        origin_world = np.array([[[0.0, 0.0]]], dtype='float32')
+        origin_pixel = cv2.perspectiveTransform(origin_world, np.linalg.inv(M))
+        ox, oy = int(origin_pixel[0][0][0]), int(origin_pixel[0][0][1])
+        
+        # X-axis endpoint
+        x_axis_world = np.array([[[scale, 0.0]]], dtype='float32')
+        x_axis_pixel = cv2.perspectiveTransform(x_axis_world, np.linalg.inv(M))
+        xx, xy = int(x_axis_pixel[0][0][0]), int(x_axis_pixel[0][0][1])
+        
+        # Y-axis endpoint
+        y_axis_world = np.array([[[0.0, scale]]], dtype='float32')
+        y_axis_pixel = cv2.perspectiveTransform(y_axis_world, np.linalg.inv(M))
+        yx, yy = int(y_axis_pixel[0][0][0]), int(y_axis_pixel[0][0][1])
+        
+        # Draw X-axis (Red)
+        cv2.arrowedLine(frame, (ox, oy), (xx, xy), (0, 0, 255), 3, tipLength=0.3)
+        cv2.putText(frame, "X", (xx + 10, xy), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        
+        # Draw Y-axis (Green)
+        cv2.arrowedLine(frame, (ox, oy), (yx, yy), (0, 255, 0), 3, tipLength=0.3)
+        cv2.putText(frame, "Y", (yx, yy + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        
+        # Draw origin point
+        cv2.circle(frame, (ox, oy), 5, (255, 255, 255), -1)
+        cv2.putText(frame, "Origin (0,0)", (ox + 10, oy - 10), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        
+    except Exception as e:
+        rospy.logwarn(f"Failed to draw coordinate axes: {e}")
+
+def draw_debug_info(frame, detected_objects, white_region_coords):
+    """
+    Draw debug information on the frame
+    Args:
+        frame: OpenCV frame
+        detected_objects: List of detected objects with coordinates
+        white_region_coords: White region coordinates
+    """
+    try:
+        # Draw title
+        cv2.putText(frame, "DEBUG MODE", (10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+        
+        # Draw detected objects info
+        y_offset = 60
+        for i, obj in enumerate(detected_objects):
+            label = obj.get('label', 'unknown')
+            color_name = obj.get('color', 'unknown')
+            class_name = obj.get('class', 'unknown')
+            x = obj.get('x', 0.0)
+            y = obj.get('y', 0.0)
+            cx = obj.get('cx', 0)
+            cy = obj.get('cy', 0)
+            roll = obj.get('roll', 0.0)
+            
+            # Draw info text
+            info_text = f"{i+1}. {color_name} {class_name}"
+            cv2.putText(frame, info_text, (10, y_offset), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            y_offset += 20
+            
+            coord_text = f"   Robot: ({x:.3f}, {y:.3f}m)"
+            cv2.putText(frame, coord_text, (10, y_offset), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+            y_offset += 15
+            
+            pixel_text = f"   Pixel: ({cx}, {cy})"
+            cv2.putText(frame, pixel_text, (10, y_offset), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+            y_offset += 15
+            
+            roll_text = f"   Roll: {roll:.3f} rad"
+            cv2.putText(frame, roll_text, (10, y_offset), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+            y_offset += 25
+            
+            # Draw crosshair at object center
+            cv2.drawMarker(frame, (cx, cy), (0, 255, 255), 
+                          cv2.MARKER_CROSS, 15, 2)
+        
+        # Draw white region info
+        if white_region_coords:
+            cv2.putText(frame, f"White Region:", (10, y_offset), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            y_offset += 20
+            white_text = f"  ({white_region_coords['x']:.3f}, {white_region_coords['y']:.3f}m)"
+            cv2.putText(frame, white_text, (10, y_offset), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+        
+    except Exception as e:
+        rospy.logwarn(f"Failed to draw debug info: {e}")
+
 # ========== 背景影像處理 ==========
 output_frame = None
 
 def process_frames():
-    global output_frame, camera_available, camera, camera_error_logged
+    global output_frame, camera_available, camera, camera_error_logged, debug_mode_enabled
     while not rospy.is_shutdown() and RUNNING:
         frame = None
         
@@ -157,6 +263,31 @@ def process_frames():
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     corners, ids, _ = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=aruco_params)
 
+                    # Calculate perspective transform if ArUco markers detected
+                    M = None
+                    if ids is not None and len(ids) >= 4:
+                        id_list = ids.flatten()
+                        aruco_points = {}
+                        for i, corner in enumerate(corners):
+                            aruco_points[id_list[i]] = corner[0].mean(axis=0)
+                        
+                        if all(k in aruco_points for k in [0, 1, 2, 3]):
+                            src_pts = np.array([
+                                aruco_points[3],  # 左上
+                                aruco_points[2],  # 右上
+                                aruco_points[1],  # 右下
+                                aruco_points[0],  # 左下
+                            ], dtype="float32")
+                            
+                            dst_pts = np.array([
+                                [0, 0],
+                                [1, 0],
+                                [1, 1],
+                                [0, 1],
+                            ], dtype="float32")
+                            
+                            M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+
                     # 畫出 YOLO 偵測框（使用最新 detected_objects）
                     for obj in detected_objects:
                         pts = np.array(obj["pts"], dtype=int).reshape((-1, 1, 2))
@@ -171,6 +302,12 @@ def process_frames():
                         cv2.circle(frame, (cx, cy), 5, color, -1)
                         cv2.putText(frame, label, (cx, cy - 10),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                    
+                    # Draw debug information if debug mode is enabled
+                    if debug_mode_enabled:
+                        if M is not None:
+                            draw_coordinate_axes(frame, M, scale=0.2)
+                        draw_debug_info(frame, detected_objects, white_region_coords)
             except Exception as e:
                 if not camera_error_logged:
                     rospy.logerr(f"攝影機處理時發生錯誤: {e}")
@@ -413,6 +550,34 @@ def voice_command():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/toggle_debug_mode', methods=['POST'])
+def toggle_debug_mode():
+    """Toggle debug mode on/off"""
+    global debug_mode_enabled
+    
+    data = request.get_json()
+    if data and 'enabled' in data:
+        debug_mode_enabled = data['enabled']
+    else:
+        debug_mode_enabled = not debug_mode_enabled
+    
+    rospy.loginfo(f"Debug mode {'enabled' if debug_mode_enabled else 'disabled'}")
+    
+    return jsonify({
+        "success": True,
+        "debug_mode": debug_mode_enabled,
+        "message": f"Debug mode {'enabled' if debug_mode_enabled else 'disabled'}"
+    })
+
+@app.route('/debug_mode_status', methods=['GET'])
+def debug_mode_status():
+    """Get current debug mode status"""
+    global debug_mode_enabled
+    
+    return jsonify({
+        "debug_mode": debug_mode_enabled
+    })
 
 # ========== 主程式 ==========
 if __name__ == '__main__':

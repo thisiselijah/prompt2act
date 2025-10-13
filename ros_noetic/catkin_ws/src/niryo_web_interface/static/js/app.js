@@ -169,6 +169,53 @@ function checkCameraStatus() {
         });
 }
 
+// Debug Mode Functionality
+let debugModeEnabled = false;
+
+function toggleDebugMode() {
+    debugModeEnabled = !debugModeEnabled;
+
+    const btn = document.getElementById('debug-mode-btn');
+
+    apiCall('/toggle_debug_mode', {
+        body: JSON.stringify({ enabled: debugModeEnabled })
+    })
+        .then(data => {
+            if (data.success) {
+                if (debugModeEnabled) {
+                    btn.classList.add('active');
+                    btn.textContent = '🐛 Debug: ON';
+                    showToast('Debug mode enabled - 顯示座標軸與座標資訊', 'info');
+                } else {
+                    btn.classList.remove('active');
+                    btn.textContent = '🐛 Debug Mode';
+                    showToast('Debug mode disabled', 'info');
+                }
+            }
+        })
+        .catch(error => {
+            showToast(`Failed to toggle debug mode: ${error.message}`, 'error');
+            debugModeEnabled = !debugModeEnabled; // Revert on error
+        });
+}
+
+// Check debug mode status on page load
+function checkDebugModeStatus() {
+    fetch('/debug_mode_status')
+        .then(response => response.json())
+        .then(data => {
+            debugModeEnabled = data.debug_mode;
+            const btn = document.getElementById('debug-mode-btn');
+            if (debugModeEnabled) {
+                btn.classList.add('active');
+                btn.textContent = '🐛 Debug: ON';
+            }
+        })
+        .catch(err => {
+            console.error('Failed to check debug mode status:', err);
+        });
+}
+
 // D3.js Tree Visualization
 let treeData = null;
 let svg, g, tree, root;
@@ -662,6 +709,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Initial camera status check
     checkCameraStatus();
+
+    // Check debug mode status
+    checkDebugModeStatus();
 
     // Periodic status updates (every 5 seconds)
     setInterval(checkCameraStatus, 5000);

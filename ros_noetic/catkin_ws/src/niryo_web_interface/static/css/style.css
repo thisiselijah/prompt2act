@@ -129,6 +129,30 @@ body {
   font-weight: 600;
 }
 
+.camera-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+#debug-mode-btn {
+  background: #6b7280;
+  transition: all 0.3s ease;
+}
+
+#debug-mode-btn.active {
+  background: #10b981;
+  border-color: #059669;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+#debug-mode-btn:hover {
+  background: #4b5563;
+}
+
+#debug-mode-btn.active:hover {
+  background: #059669;
+}
+
 .camera-container {
   display: flex;
   justify-content: center;
