@@ -139,7 +139,6 @@ def image_callback(msg):
     aruco_info = {
         "detected": True,
         "transform_matrix": M.tolist() if M is not None else None,  # 3x3 矩陣
-        "aruco0_center": aruco_points.get(0, [0, 0]).tolist() if 0 in aruco_points else None,
         "marker_count": len(aruco_points)
     }
 
