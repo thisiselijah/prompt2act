@@ -88,8 +88,8 @@ except Exception as e:
 # ArUco 標記檢測已移至 yolo_detection_node 進行，避免重複計算
 # aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 # aruco_params = cv2.aruco.DetectorParameters()
-TABLE_WIDTH_CM = 23
-TABLE_HEIGHT_CM = 30
+TABLE_WIDTH_CM = 30
+TABLE_HEIGHT_CM = 29
 
 # ========== YOLO 偵測結果 ==========
 detected_objects = []  # 當前偵測到的物件

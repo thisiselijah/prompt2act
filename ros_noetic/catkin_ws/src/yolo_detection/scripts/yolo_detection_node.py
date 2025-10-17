@@ -82,13 +82,29 @@ aruco_params = cv2.aruco.DetectorParameters()
 TABLE_WIDTH_CM = 30
 TABLE_HEIGHT_CM = 29
 
+# --- 校準參數 ---
+# 這些值應該通過校準過程來設定
+calibrated_origin_x = 0.0  # 米
+calibrated_origin_y = 0.0  # 米
+origin_calibrated = False  # 標記是否已校準
+
 # --- 座標轉換 ---
 def camera_to_robot_coords(wx, wy):
-    origin_x = 0
-    origin_y = 0
+    """
+    將相機座標 (0-1 歸一化) 轉換為機器人座標 (米)
+    
+    參數:
+    wx, wy: 歸一化的世界座標 (0-1)
+    
+    返回:
+    robot_x, robot_y: 機器人座標 (米)
+    """
+    # 將歸一化座標轉換為實際尺寸 (厘米)
     real_x_cm = wx * TABLE_WIDTH_CM
     real_y_cm = wy * TABLE_HEIGHT_CM
-    return origin_x + real_x_cm / 100.0, origin_y + real_y_cm / 100.0
+    
+    # 轉換為米並應用校準後的原點偏移
+    return calibrated_origin_x + real_x_cm / 100.0, calibrated_origin_y + real_y_cm / 100.0
 
 # --- ROS Publisher ---
 bridge = CvBridge()
@@ -97,6 +113,64 @@ pub_target = rospy.Publisher('/yolo_detected_targets', String, queue_size=10)
 # --- 狀態旗標 ---
 white_region_detected = False
 white_region_coords = None
+
+# --- 校準函數 ---
+def calibrate_aruco_origin(corners, ids, frame, M):
+    """
+    校準 ArUco 標記原點位置
+    找到 ID=3 的標記並計算其在機器人座標系中的實際位置
+    
+    參數:
+    corners: ArUco 標記角點
+    ids: 標記 ID 列表
+    frame: 當前影像幀
+    M: 透視變換矩陣
+    
+    返回:
+    bool: 是否成功校準
+    """
+    global calibrated_origin_x, calibrated_origin_y, origin_calibrated
+    
+    if ids is not None and not origin_calibrated:
+        for i, marker_id in enumerate(ids.flatten()):
+            if marker_id == 3:  # 使用 ID=3 作為原點標記
+                # 計算標記中心點 (像素座標)
+                marker_corners = corners[i][0]
+                center_x = int((marker_corners[0][0] + marker_corners[2][0]) / 2)
+                center_y = int((marker_corners[0][1] + marker_corners[2][1]) / 2)
+                
+                # 將像素座標轉換為歸一化座標
+                norm_x = center_x / frame.shape[1]
+                norm_y = center_y / frame.shape[0]
+                
+                # 應用透視變換得到世界座標
+                world_pos = cv2.perspectiveTransform(
+                    np.array([[[norm_x, norm_y]]], dtype='float32'), 
+                    np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype='float32')
+                )
+                wx, wy = world_pos[0][0]
+                
+                # 計算未校準的機器人座標 (這是標記的當前位置)
+                current_robot_x, current_robot_y = camera_to_robot_coords(wx, wy)
+                
+                # 假設標記 ID=3 應該在機器人座標系的 (0, 0) 位置
+                # 因此我們需要將原點調整為負的當前位置
+                calibrated_origin_x = -current_robot_x
+                calibrated_origin_y = -current_robot_y
+                origin_calibrated = True
+                
+                # 在影像上標記校準點
+                cv2.circle(frame, (center_x, center_y), 10, (0, 0, 255), -1)
+                cv2.putText(frame, "CALIBRATED ORIGIN (ID=3)", 
+                           (center_x + 15, center_y), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                
+                rospy.loginfo(f"🎯 ArUco Origin calibrated: Marker at pixel({center_x},{center_y}) -> Robot({current_robot_x:.3f},{current_robot_y:.3f})m")
+                rospy.loginfo(f"📐 Origin offset set to: ({calibrated_origin_x:.3f}, {calibrated_origin_y:.3f})m")
+                
+                return True
+    
+    return False
 
 # --- 影像處理 ---
 def image_callback(msg):
@@ -135,6 +209,9 @@ def image_callback(msg):
         if not hasattr(image_callback, 'transform_logged'):
             image_callback.transform_logged = True
             rospy.loginfo("🔧 Perspective transform matrix computed")
+            
+            # 校準 ArUco 原點
+            calibrate_aruco_origin(corners, ids, frame, M)
     else:
         return
     
@@ -145,6 +222,9 @@ def image_callback(msg):
         "transform_matrix": M.tolist() if M is not None else None,  # 3x3 矩陣
         "marker_count": len(aruco_points)
     }
+
+    # 校準原點位置
+    calibrate_aruco_origin(corners, ids, frame, M)
 
     # YOLO 偵測
     results = model(frame, verbose=False)[0]
@@ -204,6 +284,18 @@ def image_callback(msg):
 
             if 0 <= wx <= 1 and 0 <= wy <= 1:
                 robot_x, robot_y = camera_to_robot_coords(wx, wy)
+                
+                # 調試輸出：每 100 幀記錄一次座標轉換示例
+                if hasattr(image_callback, 'debug_count'):
+                    image_callback.debug_count += 1
+                else:
+                    image_callback.debug_count = 1
+                
+                if image_callback.debug_count % 100 == 0:
+                    if origin_calibrated:
+                        rospy.loginfo(f"🔍 Calibrated: Camera({cx},{cy}) -> World({wx:.3f},{wy:.3f}) -> Robot({robot_x:.3f},{robot_y:.3f})m")
+                    else:
+                        rospy.loginfo(f"🔍 Uncalibrated: Camera({cx},{cy}) -> World({wx:.3f},{wy:.3f}) -> Robot({robot_x:.3f},{robot_y:.3f})m")
 
                 detections_list.append({
                     "cx": cx,
