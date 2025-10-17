@@ -69,8 +69,31 @@ class DetectObjects(py_trees.behaviour.Behaviour):
     def _detection_callback(self, msg):
         """Callback to receive YOLO detection data"""
         try:
-            self.detected_objects = json.loads(msg.data)
-            self.logger.info(f"Received {len(self.detected_objects)} detected objects")
+            # Parse the enhanced YOLO data format
+            yolo_data = json.loads(msg.data)
+            
+            # Extract detections array from the data structure
+            if isinstance(yolo_data, dict) and 'detections' in yolo_data:
+                self.detected_objects = yolo_data['detections']
+                self.logger.info(f"Received {len(self.detected_objects)} detected objects from enhanced format")
+                
+                # Store additional metadata in blackboard
+                if 'white_region' in yolo_data and yolo_data['white_region']:
+                    self.blackboard.set('white_region', yolo_data['white_region'])
+                    rospy.loginfo(f"📋 Blackboard updated - white_region: ({yolo_data['white_region'].get('x', 'N/A'):.3f}, {yolo_data['white_region'].get('y', 'N/A'):.3f})")
+                
+                if 'timestamp' in yolo_data:
+                    self.blackboard.set('detection_timestamp', yolo_data['timestamp'])
+                    rospy.loginfo(f"📋 Blackboard updated - detection_timestamp: {yolo_data['timestamp']}")
+                    
+            elif isinstance(yolo_data, list):
+                # Fallback for older data format (direct array)
+                self.detected_objects = yolo_data
+                self.logger.info(f"Received {len(self.detected_objects)} detected objects from legacy format")
+            else:
+                self.logger.warn("Unexpected YOLO data format, treating as empty")
+                self.detected_objects = []
+                
         except json.JSONDecodeError as e:
             self.logger.error(f"Failed to parse detection data: {e}")
             self.detected_objects = []
@@ -82,19 +105,31 @@ class DetectObjects(py_trees.behaviour.Behaviour):
             
             # Print detailed information about detected objects
             for i, obj in enumerate(self.detected_objects):
-                obj_info = f"  Object {i+1}: "
-                if 'class' in obj:
-                    obj_info += f"class='{obj['class']}' "
-                if 'x' in obj and 'y' in obj:
-                    obj_info += f"position=({obj['x']:.3f}, {obj['y']:.3f}) "
-                if 'confidence' in obj:
-                    obj_info += f"confidence={obj['confidence']:.2f} "
-                if 'roll' in obj:
-                    obj_info += f"roll={obj['roll']:.3f}"
-                self.logger.info(obj_info)
+                obj_class = obj.get('class', 'unknown')
+                obj_color = obj.get('color', 'unknown')
+                obj_label = obj.get('label', 'unknown')
+                x, y = obj.get('x', 0.0), obj.get('y', 0.0)
+                confidence = obj.get('confidence', 0.0)
+                roll = obj.get('roll', 0.0)
+                
+                self.logger.info(f"  Object {i+1}: {obj_color} {obj_class} (label: {obj_label}) "
+                               f"at ({x:.3f}, {y:.3f}) conf: {confidence:.2f} roll: {roll:.3f}")
             
             # Store detection data in blackboard for other behaviors to use
             self.blackboard.set('detected_objects', self.detected_objects)
+            
+            # Debug: Print blackboard contents when updated
+            rospy.loginfo("📋 Blackboard updated - Current contents:")
+            rospy.loginfo(f"  - detected_objects: {len(self.detected_objects)} items")
+            white_region = self.blackboard.get('white_region')
+            if white_region:
+                rospy.loginfo(f"  - white_region: ({white_region.get('x', 'N/A'):.3f}, {white_region.get('y', 'N/A'):.3f})")
+            else:
+                rospy.loginfo("  - white_region: Not detected")
+            detection_timestamp = self.blackboard.get('detection_timestamp')
+            if detection_timestamp:
+                rospy.loginfo(f"  - detection_timestamp: {detection_timestamp}")
+            
             return py_trees.common.Status.SUCCESS
         else:
             self.logger.info("🔍 No objects detected, continuing to search...")
@@ -168,6 +203,12 @@ class PickUp(py_trees.behaviour.Behaviour):
                 # Remove picked object from detected list
                 detected_objects.remove(target_object)
                 self.blackboard.set('detected_objects', detected_objects)
+                
+                # Debug: Print blackboard contents when updated
+                rospy.loginfo("📋 Blackboard updated after pickup:")
+                rospy.loginfo(f"  - picked_object: {target_object.get('class', 'unknown')} {target_object.get('color', 'unknown')}")
+                rospy.loginfo(f"  - detected_objects: {len(detected_objects)} items remaining")
+                
                 return py_trees.common.Status.SUCCESS
             else:
                 self.logger.error(f"❌ Pick up failed: {response.message}")
@@ -181,13 +222,13 @@ class PickUp(py_trees.behaviour.Behaviour):
 class PlaceDown(py_trees.behaviour.Behaviour):
     """Behavior to place objects using robot control service"""
     
-    def __init__(self, name, place_x=0.15, place_y=-0.15, place_z=0.18):
+    def __init__(self, name, place_x=None, place_y=None, place_z=0.18):
         super(PlaceDown, self).__init__(name)
         self.logger = py_trees.logging.Logger(name)
         self.robot_service = None
-        self.place_x = place_x
-        self.place_y = place_y
-        self.place_z = place_z
+        self.place_x = place_x  # Allow None to use blackboard coordinates
+        self.place_y = place_y  # Allow None to use blackboard coordinates
+        self.place_z = place_z  # Default to 0.18
         # Initialize blackboard for py_trees 0.7.x compatibility
         self.blackboard = py_trees.blackboard.Blackboard()
         
@@ -222,6 +263,19 @@ class PlaceDown(py_trees.behaviour.Behaviour):
                 self.logger.warn("⚠️ No object available to place down")
                 # Return RUNNING to wait for an object to be picked
                 return py_trees.common.Status.RUNNING
+            
+            # Get place coordinates from blackboard white_region if not specified
+            if self.place_x is None or self.place_y is None:
+                white_region = self.blackboard.get('white_region')
+                if white_region:
+                    self.place_x = white_region.get('x', 0.15)
+                    self.place_y = white_region.get('y', -0.15)
+                    self.logger.info(f"📍 Using white region coordinates from blackboard: ({self.place_x:.3f}, {self.place_y:.3f})")
+                else:
+                    # Fallback to default coordinates if white region not available
+                    self.place_x = 0.15
+                    self.place_y = -0.15
+                    self.logger.warn("⚠️ No white region found in blackboard, using default coordinates")
                 
             # Use original object orientation for placing
             roll = picked_object.get('roll', 0.0)
@@ -242,6 +296,13 @@ class PlaceDown(py_trees.behaviour.Behaviour):
                 self.logger.info(f"✅ Successfully placed {obj_class} at ({self.place_x:.2f}, {self.place_y:.2f}, {self.place_z:.2f})")
                 # Clear picked object from blackboard
                 self.blackboard.set('picked_object', None)
+                
+                # Debug: Print blackboard contents when updated
+                rospy.loginfo("📋 Blackboard updated after place down:")
+                rospy.loginfo("  - picked_object: Cleared (None)")
+                detected_objects = self.blackboard.get('detected_objects') or []
+                rospy.loginfo(f"  - detected_objects: {len(detected_objects)} items")
+                
                 return py_trees.common.Status.SUCCESS
             else:
                 self.logger.error(f"❌ Place down failed: {response.message}")
@@ -390,6 +451,257 @@ class MoveToHome(py_trees.behaviour.Behaviour):
                 
         except Exception as e:
             self.logger.error(f"Error moving to home: {e}")
+            return py_trees.common.Status.FAILURE
+
+class MoveToSpecificPose(py_trees.behaviour.Behaviour):
+    """Behavior to move robot to a specific pose (x, y, z, roll, pitch, yaw)"""
+    
+    def __init__(self, name, x=0.0, y=0.0, z=0.0, roll=0.0, pitch=0.0, yaw=0.0):
+        super(MoveToSpecificPose, self).__init__(name)
+        self.logger = py_trees.logging.Logger(name)
+        self.robot_service = None
+        self.x = x
+        self.y = y
+        self.z = z
+        self.roll = roll
+        self.pitch = pitch
+        self.yaw = yaw
+        
+    def setup(self, timeout=None):
+        """Setup the robot control service client"""
+        try:
+            self.logger.info("Setup completed - will connect to robot service when needed")
+            return True
+        except Exception as e:
+            self.logger.error(f"Setup failed: {e}")
+            return False
+
+    def update(self):
+        """Execute move to specific pose behavior"""
+        # Connect to service if not already connected
+        if not self.robot_service:
+            try:
+                rospy.wait_for_service('/arm_command', timeout=2.0)
+                self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+                self.logger.info("Robot control service connected")
+            except rospy.ROSException as e:
+                self.logger.error(f"❌ Robot service not available: {e}")
+                return py_trees.common.Status.FAILURE
+            
+        try:
+            self.logger.info(f"🤖 Moving to pose ({self.x:.3f}, {self.y:.3f}, {self.z:.3f}), "
+                           f"rotation ({self.roll:.3f}, {self.pitch:.3f}, {self.yaw:.3f})")
+            
+            # Send move to pose command to robot
+            command = f"move_to_pose:{self.x},{self.y},{self.z},{self.roll},{self.pitch},{self.yaw}"
+            req = RobotCommandRequest()
+            req.command = command
+            
+            response = self.robot_service(req)
+            
+            if response.success:
+                self.logger.info(f"✅ Successfully moved to specified pose")
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.logger.error(f"❌ Failed to move to pose: {response.message}")
+                return py_trees.common.Status.FAILURE
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error during move to pose: {e}")
+            return py_trees.common.Status.FAILURE
+
+class MoveAboveObject(py_trees.behaviour.Behaviour):
+    """Behavior to move robot above a detected object"""
+    
+    def __init__(self, name, target_object_class="cube", target_color="blue", z_offset=0.1):
+        super(MoveAboveObject, self).__init__(name)
+        self.logger = py_trees.logging.Logger(name)
+        self.robot_service = None
+        self.target_object_class = target_object_class.lower()
+        self.target_color = target_color.lower()
+        self.z_offset = z_offset
+        self.blackboard = py_trees.blackboard.Blackboard()
+        
+    def setup(self, timeout=None):
+        """Setup the robot control service client"""
+        try:
+            self.logger.info("Setup completed - will connect to robot service when needed")
+            return True
+        except Exception as e:
+            self.logger.error(f"Setup failed: {e}")
+            return False
+
+    def update(self):
+        """Execute move above object behavior"""
+        # Connect to service if not already connected
+        if not self.robot_service:
+            try:
+                rospy.wait_for_service('/arm_command', timeout=2.0)
+                self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+                self.logger.info("Robot control service connected")
+            except rospy.ROSException as e:
+                self.logger.error(f"❌ Robot service not available: {e}")
+                return py_trees.common.Status.FAILURE
+            
+        try:
+            # Get detected objects from blackboard
+            detected_objects = self.blackboard.get('detected_objects') or []
+            
+            if not detected_objects:
+                self.logger.warn("⚠️ No objects detected")
+                return py_trees.common.Status.RUNNING
+            
+            # Find the target object (e.g., blue cube)
+            target_object = None
+            for obj in detected_objects:
+                # Use the new standardized format first
+                obj_class = obj.get('class', '').lower()
+                obj_color = obj.get('color', '').lower()
+                obj_label = obj.get('label', '').lower()
+                
+                # Primary matching: use standardized class and color fields
+                class_matches = (self.target_object_class.lower() == obj_class)
+                color_matches = (self.target_color.lower() == obj_color)
+                
+                # Fallback matching: check label field for legacy compatibility
+                if not (class_matches and color_matches) and obj_label:
+                    class_matches = (self.target_object_class in obj_label or 
+                                   obj_label in self.target_object_class)
+                    color_matches = (self.target_color in obj_label or 
+                                   obj_label.startswith(self.target_color) or
+                                   obj_label.endswith(self.target_color))
+                
+                if class_matches and color_matches:
+                    target_object = obj
+                    self.logger.info(f"🎯 Found target object: {obj_color} {obj_class} (label: {obj_label})")
+                    break
+            
+            if not target_object:
+                self.logger.warn(f"⚠️ No {self.target_color} {self.target_object_class} found in detected objects")
+                # Log available objects for debugging
+                for obj in detected_objects:
+                    obj_class = obj.get('class', 'unknown')
+                    obj_color = obj.get('color', 'unknown')
+                    obj_label = obj.get('label', 'unknown')
+                    self.logger.info(f"Available object: {obj_color} {obj_class} (label: {obj_label})")
+                return py_trees.common.Status.FAILURE
+            
+            # Calculate position above the object
+            x = target_object.get('x', 0.0)
+            y = target_object.get('y', 0.0)
+            z = target_object.get('z', 0.2) + self.z_offset  # Add offset to be above
+            roll = 0.0  # Default orientation
+            pitch = 1.5  # Look down towards object
+            yaw = 0.0
+            
+            self.logger.info(f"🎯 Moving above {self.target_color} {self.target_object_class} "
+                           f"at ({x:.3f}, {y:.3f}, {z:.3f})")
+            
+            # Send move command to robot
+            command = f"move_to_pose:{x},{y},{z},{roll},{pitch},{yaw}"
+            req = RobotCommandRequest()
+            req.command = command
+            
+            response = self.robot_service(req)
+            
+            if response.success:
+                self.logger.info(f"✅ Successfully moved above {self.target_color} {self.target_object_class}")
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.logger.error(f"❌ Failed to move above object: {response.message}")
+                return py_trees.common.Status.FAILURE
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error during move above object: {e}")
+            return py_trees.common.Status.FAILURE
+
+class MoveToWhiteRegion(py_trees.behaviour.Behaviour):
+    """Behavior to move robot to the white region (designated work area)"""
+    
+    def __init__(self, name, z_height=0.3, max_attempts=10):
+        super(MoveToWhiteRegion, self).__init__(name)
+        self.logger = py_trees.logging.Logger(name)
+        self.robot_service = None
+        self.z_height = z_height  # Height above the white region
+        self.max_attempts = max_attempts  # Maximum attempts before failure
+        self.current_attempts = 0  # Counter for current attempts
+        self.blackboard = py_trees.blackboard.Blackboard()
+        
+    def setup(self, timeout=None):
+        """Setup the robot control service client"""
+        try:
+            self.logger.info("Setup completed - will connect to robot service when needed")
+            return True
+        except Exception as e:
+            self.logger.error(f"Setup failed: {e}")
+            return False
+
+    def update(self):
+        """Execute move to white region behavior"""
+        # Connect to service if not already connected
+        if not self.robot_service:
+            try:
+                rospy.wait_for_service('/arm_command', timeout=2.0)
+                self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+                self.logger.info("Robot control service connected")
+            except rospy.ROSException as e:
+                self.logger.error(f"❌ Robot service not available: {e}")
+                return py_trees.common.Status.FAILURE
+            
+        try:
+            # Get white region coordinates from blackboard
+            white_region = self.blackboard.get('white_region')
+            
+            if not white_region:
+                self.current_attempts += 1
+                self.logger.warn(f"⚠️ No white region detected (attempt {self.current_attempts}/{self.max_attempts})")
+                
+                if self.current_attempts >= self.max_attempts:
+                    self.logger.error(f"❌ Failed to detect white region after {self.max_attempts} attempts")
+                    return py_trees.common.Status.FAILURE
+                
+                return py_trees.common.Status.RUNNING
+            
+            # Move to white region with specified height
+            x = white_region.get('x')
+            y = white_region.get('y') 
+            z = self.z_height
+            roll = 0.0  # Default orientation
+            pitch = 1.5  # Look down towards surface
+            yaw = 0.0
+            
+            self.logger.info(f"📍 Moving to white region at ({x:.3f}, {y:.3f}, {z:.3f})")
+            
+            # Send move command to robot
+            command = f"move_to_pose:{x},{y},{z},{roll},{pitch},{yaw}"
+            req = RobotCommandRequest()
+            req.command = command
+            
+            response = self.robot_service(req)
+            
+            if response.success:
+                self.logger.info(f"✅ Successfully moved to white region")
+                # Reset attempts counter on success
+                self.current_attempts = 0
+                
+                # Debug: Print blackboard contents
+                rospy.loginfo("📋 Blackboard contents after moving to white region:")
+                white_region = self.blackboard.get('white_region')
+                if white_region:
+                    rospy.loginfo(f"  - white_region: ({white_region.get('x', 'N/A'):.3f}, {white_region.get('y', 'N/A'):.3f})")
+                picked_object = self.blackboard.get('picked_object')
+                if picked_object:
+                    rospy.loginfo(f"  - picked_object: {picked_object.get('class', 'unknown')} {picked_object.get('color', 'unknown')}")
+                else:
+                    rospy.loginfo("  - picked_object: None")
+                
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.logger.error(f"❌ Failed to move to white region: {response.message}")
+                return py_trees.common.Status.FAILURE
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error during move to white region: {e}")
             return py_trees.common.Status.FAILURE
 
 # --- Visualization Functions ---
@@ -722,10 +1034,11 @@ def create_behavior_from_config(config):
         elif behavior_type == 'pick_up':
             return PickUp(behavior_name)
         elif behavior_type == 'place_down':
-            # Allow custom place coordinates from config
-            place_x = config.get('place_x', 0.15)
-            place_y = config.get('place_y', -0.15) 
-            place_z = config.get('place_z', 0.18)
+            # Allow custom place coordinates from config (optional)
+            # If not specified, will use blackboard white_region coordinates
+            place_x = config.get('place_x')  # None if not specified - will use blackboard
+            place_y = config.get('place_y')  # None if not specified - will use blackboard
+            place_z = config.get('place_z', 0.18)  # Default to 0.18
             return PlaceDown(behavior_name, place_x, place_y, place_z)
         elif behavior_type == 'open_gripper':
             return OpenGripper(behavior_name)
@@ -733,6 +1046,26 @@ def create_behavior_from_config(config):
             return CloseGripper(behavior_name)
         elif behavior_type == 'move_to_home':
             return MoveToHome(behavior_name)
+        elif behavior_type == 'move_to_pose':
+            # Allow custom pose coordinates from config
+            x = config.get('pose_x', 0.0)
+            y = config.get('pose_y', 0.0)
+            z = config.get('pose_z', 0.0)
+            roll = config.get('pose_roll', 0.0)
+            pitch = config.get('pose_pitch', 0.0)
+            yaw = config.get('pose_yaw', 0.0)
+            return MoveToSpecificPose(behavior_name, x, y, z, roll, pitch, yaw)
+        elif behavior_type == 'move_above_object':
+            # Allow custom object targeting parameters from config
+            target_object_class = config.get('target_object_class', 'cube')
+            target_color = config.get('target_color', 'blue')
+            z_offset = config.get('z_offset', 0.1)
+            return MoveAboveObject(behavior_name, target_object_class, target_color, z_offset)
+        elif behavior_type == 'move_to_white_region':
+            # Allow custom height parameter and max attempts from config
+            z_height = config.get('z_height', 0.3)
+            max_attempts = config.get('max_attempts', 10)
+            return MoveToWhiteRegion(behavior_name, z_height, max_attempts)
         elif behavior_type == 'sequence':
             sequence = py_trees.composites.Sequence(behavior_name, memory=False)
             for child_config in config.get('children', []):

@@ -7,7 +7,7 @@ import rospy
 import speech_recognition as sr
 from pydub import AudioSegment
 import os
-from speech_recognition.srv import ProcessAudioCommand, ProcessAudioCommandResponse
+from speech_recognition_package.srv import ProcessAudioCommand, ProcessAudioCommandResponse
 from llm.srv import GenerateBehaviorTree, GenerateBehaviorTreeRequest
 
 class SpeechRecognitionNode:
@@ -75,7 +75,7 @@ class SpeechRecognitionNode:
         """
         try:
             audio_file_path = req.audio_file_path
-            language = req.language if req.language else 'en-US'
+            language = req.language if req.language else 'zh-TW'  # Default to Traditional Chinese
             
             rospy.loginfo(f"Processing audio command from: {audio_file_path} (language: {language})")
             
@@ -125,30 +125,44 @@ class SpeechRecognitionNode:
                 error_message=error_msg
             )
 
-    def audio_to_text(self, audio_file_path, language='en-US'):
+    def audio_to_text(self, audio_file_path, language='zh-TW'):
         """
         Transforms audio from a given file into text using Google's Web Speech API,
         converting to a compatible format (WAV) if necessary.
 
         Args:
-            audio_file_path (str): The path to the audio file (e.g., .wav, .mp3, .m4a).
-            language (str): The language tag for the transcription, e.g., 'en-US' for English, 'zh-CN' for Chinese.
+            audio_file_path (str): The path to the audio file (e.g., .wav, .mp3, .m4a, .webm).
+            language (str): The language tag for the transcription, e.g., 'zh-TW' for Traditional Chinese, 'en-US' for English.
 
         Returns:
             str: The transcribed text, or an error message if transcription fails.
         """
         # Check if the file needs conversion
         base, ext = os.path.splitext(audio_file_path)
+        
+        # Debug: Print input audio format
+        rospy.loginfo(f"DEBUG: Input audio file: {audio_file_path}")
+        rospy.loginfo(f"DEBUG: Detected audio format: {ext.lower()}")
+        
         if ext.lower() not in ['.wav', '.flac', '.aiff', '.aifc']:
             try:
                 rospy.loginfo(f"Converting {ext} file to WAV format...")
-                audio = AudioSegment.from_file(audio_file_path)
+                
+                # Special handling for .webm files
+                if ext.lower() == '.webm':
+                    rospy.loginfo("Detected WebM format, converting to WAV...")
+                    audio = AudioSegment.from_file(audio_file_path, format="webm")
+                else:
+                    audio = AudioSegment.from_file(audio_file_path)
+                
                 wav_file_path = base + ".wav"
                 audio.export(wav_file_path, format="wav")
                 audio_file_path = wav_file_path
-                rospy.loginfo("Audio conversion successful.")
+                rospy.loginfo(f"Audio conversion successful: {ext} -> WAV")
             except Exception as e:
                 return f"Error converting audio file: {e}"
+        else:
+            rospy.loginfo(f"DEBUG: Audio format {ext.lower()} is already supported, no conversion needed")
 
         try:
             with sr.AudioFile(audio_file_path) as source:
@@ -179,9 +193,9 @@ def main():
     speech_node = SpeechRecognitionNode()
     
     rospy.loginfo("Speech Recognition Node is ready to process audio commands")
-    rospy.loginfo("Call service with: rosservice call /process_audio_command '{audio_file_path: \"/path/to/audio.wav\", language: \"en-US\"}'")
+    rospy.loginfo("Call service with: rosservice call /process_audio_command '{audio_file_path: \"/path/to/audio.wav\", language: \"zh-TW\"}'")
     rospy.loginfo("This will:")
-    rospy.loginfo("  1. Convert audio to text using Google Speech Recognition")
+    rospy.loginfo("  1. Convert audio to text using Google Speech Recognition (default: Traditional Chinese)")
     rospy.loginfo("  2. Use transcribed text as task_description for LLM")
     rospy.loginfo("  3. Generate and automatically assemble behavior tree")
     
@@ -193,4 +207,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

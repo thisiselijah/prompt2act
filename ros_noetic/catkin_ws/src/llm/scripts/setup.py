@@ -41,8 +41,23 @@ except Exception:
     # Non-fatal if not supported in this environment
     pass
 
-def print_environment_info():
-    """Print current running environment information for debugging"""
+# Cache for environment info to avoid repeated checks
+_ENV_INFO_PRINTED = False
+
+def print_environment_info(force: bool = False):
+    """
+    Print current running environment information for debugging
+    Args:
+        force: Force print even if already printed before
+    """
+    global _ENV_INFO_PRINTED
+    
+    # Skip if already printed and not forced
+    if _ENV_INFO_PRINTED and not force:
+        return
+    
+    _ENV_INFO_PRINTED = True
+    
     print("=" * 60)
     print("ENVIRONMENT INFORMATION")
     print("=" * 60)
@@ -126,8 +141,93 @@ def print_environment_info():
     
     print("=" * 60)
 
-# Print environment information at startup
-print_environment_info()
+# Only print environment information if explicitly enabled via environment variable
+if os.environ.get('LLM_DEBUG_ENV', '').lower() in ('1', 'true', 'yes'):
+    print_environment_info()
+
+# ============================================================================
+# UNICODE REPLACEMENTS (Pre-defined for better performance)
+# ============================================================================
+UNICODE_REPLACEMENTS = {
+    '\u201c': '"',   # Left double quotation mark
+    '\u201d': '"',   # Right double quotation mark  
+    '\u2018': "'",   # Left single quotation mark
+    '\u2019': "'",   # Right single quotation mark
+    '\u2013': '-',   # En dash
+    '\u2014': '-',   # Em dash
+    '\u2026': '...',  # Horizontal ellipsis
+    '\u00a0': ' ',   # Non-breaking space
+    '\ufeff': '',    # Byte order mark
+    '\u00ab': '"',   # Left guillemet
+    '\u00bb': '"',   # Right guillemet
+    '\u2039': "'",   # Single left guillemet
+    '\u203a': "'",   # Single right guillemet
+}
+
+
+def create_error_json(error_type: str, message: str = "") -> str:
+    """
+    Create a standardized error JSON response
+    Args:
+        error_type: Type of error (e.g., 'unicode_encoding_error', 'api_error')
+        message: Optional error message
+    Returns:
+        JSON string with error information
+    """
+    error_data = {
+        "error": error_type,
+        "type": "sequence",
+        "name": "Error",
+        "children": []
+    }
+    
+    if message:
+        error_data["message"] = message
+    
+    import json
+    return json.dumps(error_data)
+
+
+def extract_text_from_candidates(response) -> str:
+    """
+    Extract text from API response candidates (for Gemini API)
+    Args:
+        response: API response object with candidates
+    Returns:
+        Extracted text string or empty string
+    """
+    result_chunks = []
+    
+    if hasattr(response, 'candidates') and response.candidates:
+        for candidate in response.candidates:
+            # Map finish reasons to messages if applicable
+            try:
+                reason = getattr(candidate, 'finish_reason', None)
+                if reason == types.FinishReason.SAFETY:
+                    result_chunks.append("Response blocked due to safety concerns")
+                elif reason == types.FinishReason.RECITATION:
+                    result_chunks.append("Response blocked due to recitation concerns")
+                elif reason == types.FinishReason.OTHER:
+                    if not getattr(candidate, 'content', None):
+                        result_chunks.append("Response blocked for other reasons")
+            except Exception:
+                pass
+
+            content = getattr(candidate, 'content', None)
+            parts = getattr(content, 'parts', None) if content is not None else None
+            if parts:
+                for p in parts:
+                    text_part = getattr(p, 'text', None)
+                    if text_part:
+                        result_chunks.append(text_part)
+    
+    # Fallbacks if no candidates/parts or empty content
+    if not result_chunks and hasattr(response, 'prompt_feedback') and response.prompt_feedback:
+        block_reason = getattr(response.prompt_feedback, 'block_reason', None)
+        if block_reason:
+            result_chunks.append(f"Prompt blocked: {block_reason}")
+    
+    return " ".join([chunk.strip() for chunk in result_chunks if chunk]).strip()
 
 
 class LLMProvider(ABC):
@@ -174,25 +274,8 @@ class LLMProvider(ABC):
                 # If normalization fails, skip it
                 pass
             
-            # Replace problematic Unicode characters with safe equivalents
-            unicode_replacements = {
-                '\u201c': '"',  # Left double quotation mark
-                '\u201d': '"',  # Right double quotation mark  
-                '\u2018': "'",  # Left single quotation mark
-                '\u2019': "'",  # Right single quotation mark
-                '\u2013': '-',  # En dash
-                '\u2014': '-',  # Em dash
-                '\u2026': '...',  # Horizontal ellipsis
-                '\u00a0': ' ',  # Non-breaking space
-                '\ufeff': '',   # Byte order mark
-                # Add more problematic characters commonly seen in LLM responses
-                '\u00ab': '"',  # Left guillemet
-                '\u00bb': '"',  # Right guillemet
-                '\u2039': "'",  # Single left guillemet
-                '\u203a': "'",  # Single right guillemet
-            }
-            
-            for unicode_char, replacement in unicode_replacements.items():
+            # Replace problematic Unicode characters with safe equivalents using pre-defined dict
+            for unicode_char, replacement in UNICODE_REPLACEMENTS.items():
                 text = text.replace(unicode_char, replacement)
             
             # For Windows VM environments, be extra cautious with encoding
@@ -269,13 +352,13 @@ class OpenAIProvider(LLMProvider):
             return self._sanitize_for_encoding(result)
         except UnicodeEncodeError as unicode_error:
             print(f"OpenAI JSON API Unicode encoding error: {unicode_error}")
-            return '{"error": "unicode_encoding_error", "type": "sequence", "name": "EncodingError", "children": []}'
+            return create_error_json("unicode_encoding_error")
         except Exception as e:
-            error_msg = self._sanitize_for_encoding(f"Error: {str(e)}")
+            error_msg = self._sanitize_for_encoding(str(e))
             if "codec" in error_msg.lower() or "encode" in error_msg.lower():
-                return '{"error": "api_encoding_error", "type": "sequence", "name": "APIEncodingError", "children": []}'
+                return create_error_json("api_encoding_error")
             else:
-                return f'{{"error": "api_error", "message": "{error_msg}", "type": "sequence", "name": "APIError", "children": []}}'
+                return create_error_json("api_error", error_msg)
     
     def is_available(self) -> bool:
         try:
@@ -310,39 +393,13 @@ class GeminiProvider(LLMProvider):
                 contents=prompt
             )
 
-            # Prefer extracting from candidates/parts to avoid potential encoding on response.text
-            result_chunks = []
-            if hasattr(response, 'candidates') and response.candidates:
-                for candidate in response.candidates:
-                    # Map finish reasons to messages if applicable
-                    try:
-                        reason = getattr(candidate, 'finish_reason', None)
-                        if reason == types.FinishReason.SAFETY:
-                            result_chunks.append("Response blocked due to safety concerns")
-                        elif reason == types.FinishReason.RECITATION:
-                            result_chunks.append("Response blocked due to recitation concerns")
-                        elif reason == types.FinishReason.OTHER:
-                            # Only add if no content is present
-                            if not getattr(candidate, 'content', None):
-                                result_chunks.append("Response blocked for other reasons")
-                    except Exception:
-                        pass
-
-                    content = getattr(candidate, 'content', None)
-                    parts = getattr(content, 'parts', None) if content is not None else None
-                    if parts:
-                        for p in parts:
-                            text_part = getattr(p, 'text', None)
-                            if text_part:
-                                result_chunks.append(self._sanitize_for_encoding(text_part))
-
-            # Fallbacks if no candidates/parts or empty content
-            if not result_chunks and hasattr(response, 'prompt_feedback') and response.prompt_feedback:
-                block_reason = getattr(response.prompt_feedback, 'block_reason', None)
-                if block_reason:
-                    result_chunks.append(f"Prompt blocked: {block_reason}")
-
-            result_text = " ".join([chunk.strip() for chunk in result_chunks if chunk]).strip()
+            # 使用共用函數提取文字，然後進行編碼清理
+            result_text = extract_text_from_candidates(response)
+            
+            if result_text:
+                # 對提取的文字進行編碼清理
+                result_text = self._sanitize_for_encoding(result_text)
+            
             if not result_text:
                 result_text = "No response generated"
 
@@ -373,19 +430,12 @@ Use only ASCII characters and standard double quotes (") for JSON strings."""
                 contents=json_prompt
             )
 
-            # Build response strictly from candidates/parts to avoid response.text path
-            result_chunks = []
-            if hasattr(response, 'candidates') and response.candidates:
-                for candidate in response.candidates:
-                    content = getattr(candidate, 'content', None)
-                    parts = getattr(content, 'parts', None) if content is not None else None
-                    if parts:
-                        for p in parts:
-                            text_part = getattr(p, 'text', None)
-                            if text_part:
-                                result_chunks.append(self._sanitize_for_encoding(text_part))
-
-            result_text = " ".join([chunk.strip() for chunk in result_chunks if chunk]).strip()
+            # 使用共用函數提取文字，然後進行編碼清理
+            result_text = extract_text_from_candidates(response)
+            
+            if result_text:
+                result_text = self._sanitize_for_encoding(result_text)
+            
             if not result_text:
                 # Provide clearer fallback for JSON flows
                 result_text = '{"error": "no_json_content"}'
@@ -404,17 +454,14 @@ Use only ASCII characters and standard double quotes (") for JSON strings."""
             
         except UnicodeEncodeError as unicode_error:
             print(f"Google Gemini JSON API Unicode encoding error: {unicode_error}")
-            # Return a safe JSON error response for Unicode issues
-            return '{"error": "unicode_encoding_error", "type": "sequence", "name": "EncodingError", "children": []}'
+            return create_error_json("unicode_encoding_error")
         except Exception as e:
             print(f"Google Gemini JSON API error: {e}")
-            # Sanitize the error message itself and return safe JSON
-            error_msg = self._sanitize_for_encoding(f"Error: {str(e)}")
-            # Check if the sanitized error message looks like it contains encoding issues
+            error_msg = self._sanitize_for_encoding(str(e))
             if "codec" in error_msg.lower() or "encode" in error_msg.lower():
-                return '{"error": "api_encoding_error", "type": "sequence", "name": "APIEncodingError", "children": []}'
+                return create_error_json("api_encoding_error")
             else:
-                return f'{{"error": "api_error", "message": "{error_msg}", "type": "sequence", "name": "APIError", "children": []}}'
+                return create_error_json("api_error", error_msg)
 
     def is_available(self) -> bool:
         try:

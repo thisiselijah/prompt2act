@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>speech_recognition</name>
+  <name>speech_recognition_package</name>
   <version>0.0.0</version>
   <description>The speech_recognition package</description>
 

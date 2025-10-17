@@ -1,124 +1,254 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Niryo 機械手臂控制台</title>
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    />
     <!-- Add D3.js for advanced tree visualization -->
     <script src="https://d3js.org/d3.v7.min.js"></script>
-</head>
+  </head>
 
-<body>
+  <body>
     <!-- Top Navigation -->
     <nav class="top-nav">
-        <div class="nav-brand">
-            <h1>Niryo 控制台</h1>
+      <div class="nav-brand">
+        <h1>Niryo 控制台</h1>
+      </div>
+      <div class="nav-status">
+        <div class="status-group">
+          <span class="status-label">攝影機狀態:</span>
+          <div class="status-indicator" id="status-indicator"></div>
+          <span class="status-text" id="status-text">檢查中...</span>
         </div>
-        <div class="nav-status">
-            <div class="status-group">
-                <span class="status-label">攝影機狀態:</span>
-                <div class="status-indicator" id="status-indicator"></div>
-                <span class="status-text" id="status-text">檢查中...</span>
-            </div>
-        </div>
+      </div>
     </nav>
 
     <!-- Main Content -->
     <main class="main-content">
-        <!-- Camera Section -->
-        <section class="camera-section">
-            <div class="camera-header">
-                <h2>即時影像</h2>
-                <button class="btn btn-secondary" id="camera-reconnect-btn" onclick="reconnectCamera()">
-                    重新連接
-                </button>
-            </div>
-            <div class="camera-container">
-                <img id="camera-stream" src="{{ url_for('video') }}" alt="Camera stream" class="camera-feed">
-            </div>
-        </section>
+      <!-- Camera Section -->
+      <section class="camera-section">
+        <div class="camera-header">
+          <h2>即時影像</h2>
+          <div class="camera-controls">
+            <button
+              class="btn btn-secondary"
+              id="camera-reconnect-btn"
+              onclick="reconnectCamera()"
+            >
+              重新連接
+            </button>
+            <button
+              class="btn btn-secondary"
+              id="debug-mode-btn"
+              onclick="toggleDebugMode()"
+            >
+              🐛 Debug Mode
+            </button>
+          </div>
+          <!-- Debug Transparency Control -->
+          <div
+            class="debug-transparency-control"
+            id="transparency-control"
+            style="display: none"
+          >
+            <label for="transparency-slider" class="transparency-label">
+              透明度: <span id="transparency-value">70%</span>
+            </label>
+            <input
+              type="range"
+              id="transparency-slider"
+              min="0"
+              max="100"
+              value="70"
+              step="5"
+              oninput="updateTransparency(this.value)"
+              class="transparency-slider"
+            />
+          </div>
+        </div>
+        <div class="camera-container">
+          <img
+            id="camera-stream"
+            src="{{ url_for('video') }}"
+            alt="Camera stream"
+            class="camera-feed"
+          />
+        </div>
+      </section>
 
-        <!-- Control Panel -->
-        <aside class="control-panel">
-            <!-- Robot Controls -->
-            <div class="control-group">
-                <h3>機械手臂控制</h3>
-                <div class="button-grid">
-                    <button class="btn btn-primary" onclick="open_and_close('open')">
-                        打開夾爪
-                    </button>
-                    <button class="btn btn-primary" onclick="open_and_close('close')">
-                        夾取物體
-                    </button>
-                    <button class="btn btn-warning" onclick="setLearningMode()">
-                        Learning Mode
-                    </button>
-                    <button class="btn btn-success" onclick="moveToHome()">
-                        回到起始位置
-                    </button>
-                </div>
-            </div>
+      <!-- Control Panel -->
+      <aside class="control-panel">
+        <!-- Robot Controls -->
+        <div class="control-group">
+          <h3>機械手臂控制</h3>
+          <div class="button-grid">
+            <button class="btn btn-primary" onclick="open_and_close('open')">
+              打開夾爪
+            </button>
+            <button class="btn btn-primary" onclick="open_and_close('close')">
+              夾取物體
+            </button>
+            <button class="btn btn-warning" onclick="setLearningMode()">
+              Learning Mode
+            </button>
+            <button class="btn btn-success" onclick="moveToHome()">
+              回到起始位置
+            </button>
+          </div>
+        </div>
 
-            <!-- Object Detection -->
-            <div class="control-group">
-                <h3>物體檢測與抓取</h3>
-                <div class="button-grid">
-                    <button class="btn btn-info" onclick="pickObject('blue_block')">
-                        抓藍色方塊
-                    </button>
-                    <button class="btn btn-danger" onclick="pickObject('red_block')">
-                        抓紅色方塊
-                    </button>
-                </div>
-            </div>
+        <!-- Object Detection -->
+        <div class="control-group">
+          <h3>物體檢測與抓取</h3>
+          <div class="button-grid">
+            <button class="btn btn-info" onclick="pickObject('blue_block')">
+              抓藍色方塊
+            </button>
+            <button class="btn btn-danger" onclick="pickObject('red_block')">
+              抓紅色方塊
+            </button>
+          </div>
+        </div>
 
-            <!-- Voice Control -->
-            <div class="control-group">
-                <h3>語音控制</h3>
-                <button class="btn btn-voice" id="voice-btn" onclick="startVoiceInput()">
-                    語音輸入
-                </button>
-            </div>
+        <!-- Voice Control -->
+        <div class="control-group">
+          <h3>語音控制</h3>
+          <button
+            class="btn btn-voice"
+            id="voice-btn"
+            onclick="openRecorderBox()"
+          >
+            語音輸入
+          </button>
+        </div>
 
-            <!-- Behavior Tree Visualization -->
-            <div class="control-group">
-                <h3>行為樹狀態</h3>
-                <div class="tree-controls">
-                    <button class="btn btn-secondary btn-small" onclick="expandTree()">
-                        展開
-                    </button>
-                    <button class="btn btn-secondary btn-small" onclick="collapseTree()">
-                        收縮
-                    </button>
-                    <button class="btn btn-secondary btn-small" onclick="centerTree()">
-                        置中
-                    </button>
-                </div>
+        <!-- 錄音框 (一開始隱藏) -->
+        <div
+          id="recorder-box"
+          style="
+            display: none;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 10px;
+          "
+        >
+          <p>🎤 正在錄音中...</p>
+          <button id="stop-btn">停止錄音</button>
+        </div>
 
-                <div class="d3-tree-container" id="d3-tree-container">
-                    <svg id="tree-svg"></svg>
-                    <div class="tree-legend">
-                        <div class="legend-item">
-                            <div class="legend-status success"></div>
-                            <span>成功</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-status running"></div>
-                            <span>執行中</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-status failure"></div>
-                            <span>失敗</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-status invalid"></div>
-                            <span>無效</span>
-                        </div>
-                    </div>
-                </div>
+        <p id="transcribed-text"></p>
+
+        <!-- Behavior Tree Visualization -->
+        <div class="control-group">
+          <h3>行為樹狀態</h3>
+          <div class="tree-controls">
+            <button class="btn btn-secondary btn-small" onclick="expandTree()">
+              展開
+            </button>
+            <button
+              class="btn btn-secondary btn-small"
+              onclick="collapseTree()"
+            >
+              收縮
+            </button>
+            <button class="btn btn-secondary btn-small" onclick="centerTree()">
+              置中
+            </button>
+          </div>
+
+          <div class="d3-tree-container" id="d3-tree-container">
+            <svg id="tree-svg"></svg>
+            <div class="tree-legend">
+              <h4
+                style="
+                  margin-bottom: 0.5rem;
+                  font-size: 0.85rem;
+                  color: #4a5568;
+                "
+              >
+                節點類型
+              </h4>
+              <div class="legend-item">
+                <svg width="30" height="20">
+                  <rect
+                    x="5"
+                    y="5"
+                    width="20"
+                    height="10"
+                    fill="#3b82f6"
+                    stroke="#2563eb"
+                    stroke-width="2"
+                    rx="2"
+                  />
+                </svg>
+                <span>序列 (Sequence)</span>
+              </div>
+              <div class="legend-item">
+                <svg width="30" height="20">
+                  <polygon
+                    points="15,2 28,10 15,18 2,10"
+                    fill="#f59e0b"
+                    stroke="#d97706"
+                    stroke-width="2"
+                  />
+                </svg>
+                <span>選擇器 (Selector)</span>
+              </div>
+              <div class="legend-item">
+                <svg width="30" height="20">
+                  <ellipse
+                    cx="15"
+                    cy="10"
+                    rx="12"
+                    ry="7"
+                    fill="#10b981"
+                    stroke="#059669"
+                    stroke-width="2"
+                  />
+                </svg>
+                <span>行為 (Action)</span>
+              </div>
+              <hr
+                style="
+                  margin: 0.5rem 0;
+                  border: none;
+                  border-top: 1px solid #e2e8f0;
+                "
+              />
+              <h4
+                style="
+                  margin-bottom: 0.5rem;
+                  font-size: 0.85rem;
+                  color: #4a5568;
+                "
+              >
+                執行狀態
+              </h4>
+              <div class="legend-item">
+                <div class="legend-status success"></div>
+                <span>成功</span>
+              </div>
+              <div class="legend-item">
+                <div class="legend-status running"></div>
+                <span>執行中</span>
+              </div>
+              <div class="legend-item">
+                <div class="legend-status failure"></div>
+                <span>失敗</span>
+              </div>
+              <div class="legend-item">
+                <div class="legend-status invalid"></div>
+                <span>無效</span>
+              </div>
             </div>
-        </aside>
+          </div>
+        </div>
+      </aside>
     </main>
 
     <!-- Toast Notifications -->
@@ -126,6 +256,5 @@
 
     <!-- JavaScript -->
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
-</body>
+  </body>
 </html>
-

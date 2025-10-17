@@ -11,15 +11,38 @@ from llm.srv import LLMQuery, LLMQueryResponse, LLMJsonQuery, LLMJsonQueryRespon
 import json
 import os
 import re
+from datetime import datetime
 
 # 加入 scripts 資料夾路徑，確保 import 從原本腳本所在目錄載入
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from setup import OpenAIProvider, GeminiProvider
 
+# ============================================================================
+# COMPILED REGEX PATTERNS (Pre-compiled for better performance)
+# ============================================================================
+# Code block patterns for JSON extraction
+REGEX_CODE_BLOCKS = [
+    re.compile(r'```(?:json|JSON)?\s*(\{.*?\})\s*```', re.DOTALL | re.IGNORECASE),
+    re.compile(r'`{3,}\s*(?:json|JSON)?\s*(\{.*?\})\s*`{3,}', re.DOTALL | re.IGNORECASE),
+    re.compile(r'~~~(?:json|JSON)?\s*(\{.*?\})\s*~~~', re.DOTALL | re.IGNORECASE),
+    re.compile(r'<code[^>]*>\s*(\{.*?\})\s*</code>', re.DOTALL | re.IGNORECASE),
+    re.compile(r'(?:json|JSON):\s*(\{.*?\})', re.DOTALL | re.IGNORECASE),
+]
 
+# JSON cleaning patterns
+REGEX_JSON_CLEANING = {
+    'single_quotes': re.compile(r"(?<!\\)'([^']*?)(?<!\\)'"),
+    'trailing_commas': re.compile(r',(\s*[}\]])'),
+    'pre_json_text': re.compile(r'^.*?(?=\{)', re.DOTALL),
+    'post_json_text': re.compile(r'\}.*?$', re.DOTALL),
+    'quotes_pattern': re.compile(r'"[^"]*"'),
+    'brace_start': re.compile(r'\{'),
+}
 
-# Global constants for behavior tree generation
+# ============================================================================
+# GLOBAL CONSTANTS FOR BEHAVIOR TREE GENERATION
+# ============================================================================
 BEHAVIOR_TREE_PROMPT_TEMPLATE = """
 Generate a behavior tree JSON configuration for a robot manipulation task.
 
@@ -27,10 +50,11 @@ Task description: {task_description}
 
 IMPORTANT: Return ONLY valid JSON object with proper formatting, no explanations or additional text.
 Use double quotes for all strings and proper escaping.
+IMPORTANT: Respond in English only.
 
 Requirements:
 1. Root node must be 'sequence' or 'selector'
-2. Include appropriate behavior types: 'detect_objects', 'pick_up', 'place_down', 'open_gripper', 'close_gripper', 'move_to_home'
+2. Include appropriate behavior types: 'detect_objects', 'pick_up', 'place_down', 'open_gripper', 'close_gripper', 'move_to_home' (only when pose changes are involved)
 3. Use proper nesting for complex behaviors
 4. Each node must have 'type' and 'name' fields
 5. Composite nodes (sequence/selector) must have 'children' array
@@ -46,14 +70,44 @@ Available behavior types:
 - place_down: For placing objects at specified coordinates (supports place_x, place_y, place_z parameters)
 - open_gripper: For opening the robot gripper
 - close_gripper: For closing the robot gripper
-- move_to_home: For moving robot to home/rest position
+- move_to_home: For moving robot to home/rest position (only include when the task involves pose changes or object manipulation)
+- move_to_pose: For moving robot to a specific pose (supports pose_x, pose_y, pose_z, pose_roll, pose_pitch, pose_yaw parameters)
+- move_above_object: For moving robot above a detected object (supports target_object_class, target_color, z_offset parameters)
+- move_to_white_region: For moving robot to the white region work area (supports z_height parameter)
 - sequence: Execute children in order (all must succeed)
 - selector: Try children until one succeeds
+
+IMPORTANT: For irrelevant instructions (non-robotics tasks like "tell me a joke", "what's the weather", "sing a song", "dance", etc.), return an empty behavior tree with just a sequence root and no children. Do not attempt to create robot behaviors for non-robotics tasks.
+
+IMPORTANT: For gripper-only instructions (like "open gripper", "close gripper", "release gripper"), do NOT include move_to_home action. Only include move_to_home when the task involves actual pose changes or object manipulation that requires returning to a safe position.
 
 Return ONLY this JSON format (replace content as needed):
 {{
   "type": "sequence",
   "name": "MainTask", 
+  "children": [
+    {{
+      "type": "detect_objects",
+      "name": "DetectObjects"
+    }},
+    {{
+      "type": "pick_up",
+      "name": "PickUpObject"
+    }},
+    {{
+      "type": "place_down", 
+      "name": "PlaceObject",
+      "place_x": 0.15,
+      "place_y": -0.15,
+      "place_z": 0.18
+    }}
+  ]
+}}
+
+Example with move_to_home (for tasks requiring pose changes):
+{{
+  "type": "sequence",
+  "name": "TaskWithHomeReturn", 
   "children": [
     {{
       "type": "detect_objects",
@@ -77,6 +131,99 @@ Return ONLY this JSON format (replace content as needed):
   ]
 }}
 
+Example with move_to_pose:
+{{
+  "type": "sequence",
+  "name": "MoveAndPickTask",
+  "children": [
+    {{
+      "type": "move_to_pose",
+      "name": "MoveToObservationPoint",
+      "pose_x": 0.2,
+      "pose_y": 0.1,
+      "pose_z": 0.25,
+      "pose_roll": 0.0,
+      "pose_pitch": 1.5,
+      "pose_yaw": 0.0
+    }},
+    {{
+      "type": "detect_objects",
+      "name": "DetectObjects"
+    }},
+    {{
+      "type": "pick_up",
+      "name": "PickUpObject"
+    }}
+  ]
+}}
+
+Example for complex pick-and-place task "Pick up the blue cube and place it down to the white region":
+{{
+  "type": "sequence",
+  "name": "PickAndPlaceToWhiteRegion",
+  "children": [
+    {{
+      "type": "detect_objects",
+      "name": "DetectObjects"
+    }},
+    {{
+      "type": "move_above_object",
+      "name": "MoveAboveBlueCube",
+      "target_object_class": "cube",
+      "target_color": "blue",
+      "z_offset": 0.1
+    }},
+    {{
+      "type": "pick_up",
+      "name": "PickUpBlueCube"
+    }},
+    {{
+      "type": "move_to_white_region",
+      "name": "MoveToWhiteRegion",
+      "z_height": 0.3
+    }},
+    {{
+      "type": "place_down",
+      "name": "PlaceInWhiteRegion"
+    }},
+    {{
+      "type": "move_to_home",
+      "name": "ReturnHome"
+    }}
+  ]
+}}
+
+Example for gripper-only task "Open the gripper":
+{{
+  "type": "sequence",
+  "name": "GripperOnlyTask",
+  "children": [
+    {{
+      "type": "open_gripper",
+      "name": "OpenGripper"
+    }}
+  ]
+}}
+
+Example for gripper-only task "Close the gripper":
+{{
+  "type": "sequence",
+  "name": "CloseGripperTask",
+  "children": [
+    {{
+      "type": "close_gripper",
+      "name": "CloseGripper"
+    }}
+  ]
+}}
+
+Example for irrelevant instruction (return empty tree):
+{{
+  "type": "sequence",
+  "name": "EmptyTask",
+  "children": []
+}}
+
 Task: {task_description}
 """
 
@@ -97,7 +244,7 @@ BEHAVIOR_TREE_SCHEMA = {
                 "properties": {
                     "type": {
                         "type": "string",
-                        "enum": ["detect_objects", "pick_up", "place_down", "open_gripper", "close_gripper", "move_to_home", "sequence", "selector"]
+                        "enum": ["detect_objects", "pick_up", "place_down", "open_gripper", "close_gripper", "move_to_home", "move_to_pose", "move_above_object", "move_to_white_region", "sequence", "selector"]
                     },
                     "name": {
                         "type": "string"
@@ -109,6 +256,36 @@ BEHAVIOR_TREE_SCHEMA = {
                         "type": "number"
                     },
                     "place_z": {
+                        "type": "number"
+                    },
+                    "pose_x": {
+                        "type": "number"
+                    },
+                    "pose_y": {
+                        "type": "number"
+                    },
+                    "pose_z": {
+                        "type": "number"
+                    },
+                    "pose_roll": {
+                        "type": "number"
+                    },
+                    "pose_pitch": {
+                        "type": "number"
+                    },
+                    "pose_yaw": {
+                        "type": "number"
+                    },
+                    "target_object_class": {
+                        "type": "string"
+                    },
+                    "target_color": {
+                        "type": "string"
+                    },
+                    "z_offset": {
+                        "type": "number"
+                    },
+                    "z_height": {
                         "type": "number"
                     }
                 },
@@ -137,6 +314,7 @@ class LLMNode:
         # ROS publishers and subscribers
         self.response_pub = rospy.Publisher('/llm_response', String, queue_size=10)
         self.json_response_pub = rospy.Publisher('/llm_json_response', String, queue_size=10)
+        self.behavior_tree_pub = rospy.Publisher('/behavior_tree_json', String, queue_size=10)  # Publisher for web display
         self.prompt_sub = rospy.Subscriber('/llm_prompt', String, self.prompt_callback)
         self.json_prompt_sub = rospy.Subscriber('/llm_json_prompt', String, self.json_prompt_callback)
         
@@ -161,6 +339,20 @@ class LLMNode:
             rospy.logwarn(f"Behavior tree assembly service not available: {e}")
             self.behavior_tree_assembly_client = None
     
+    def _parse_and_format_json(self, json_string: str) -> tuple:
+        """
+        Parse and format JSON string
+        Returns: (success: bool, formatted_json: str, error_message: str)
+        """
+        try:
+            parsed_json = json.loads(json_string)
+            formatted_json = json.dumps(parsed_json, indent=2, ensure_ascii=False)
+            return True, formatted_json, ""
+        except json.JSONDecodeError as e:
+            return False, "", f"JSON parsing error: {str(e)}"
+        except TypeError as e:
+            return False, "", f"JSON type error: {str(e)}"
+    
     def _call_behavior_tree_assembly(self, json_string):
         """
         Call the behavior tree assembly service with the generated JSON
@@ -184,6 +376,38 @@ class LLMNode:
             rospy.logerr(f"Failed to call behavior tree assembly service: {e}")
             return False, f"Service call failed: {str(e)}"
     
+    def _publish_behavior_tree_for_display(self, behavior_tree_json: str, task_description: str):
+        """
+        Publish behavior tree JSON to a topic for web display
+        Args:
+            behavior_tree_json (str): The formatted JSON string to publish
+            task_description (str): The task description
+        """
+        try:
+            # Parse the behavior tree JSON
+            behavior_tree = json.loads(behavior_tree_json)
+            
+            # Create a message in the format expected by web interface
+            # The web interface expects: {"structure": <tree>, "status": <status>, "timestamp": <time>}
+            timestamp = datetime.now().timestamp()
+            display_data = {
+                "structure": behavior_tree,
+                "status": "generated",  # Initial status when tree is generated
+                "timestamp": timestamp,
+                "task_description": task_description
+            }
+            
+            # Publish to topic
+            msg = String()
+            msg.data = json.dumps(display_data, ensure_ascii=False)
+            self.behavior_tree_pub.publish(msg)
+            
+            rospy.loginfo(f"✅ Behavior tree published to /behavior_tree_json for web viewing")
+            rospy.loginfo(f"📋 Task: {task_description}")
+            
+        except Exception as e:
+            rospy.logerr(f"Failed to publish behavior tree for display: {e}")
+    
     def initialize_provider(self, provider_type: str) -> bool:
         """Initialize the specified LLM provider"""
         if provider_type not in self.providers:
@@ -193,7 +417,7 @@ class LLMNode:
         provider = self.providers[provider_type]
         if provider.initialize():
             self.current_provider = provider
-            rospy.loginfo(f"Successfully initialized {provider_type} provider")
+            # rospy.loginfo(f"Successfully initialized {provider_type} provider")
             return True
         else:
             rospy.logerr(f"Failed to initialize {provider_type} provider")
@@ -202,15 +426,15 @@ class LLMNode:
     def prompt_callback(self, msg):
         """Handle incoming prompts from topic"""
         if not self.current_provider:
-            rospy.logwarn("No LLM provider initialized")
+            rospy.logwarn_throttle(5.0, "No LLM provider initialized")
             return
         
         prompt = msg.data
-        rospy.loginfo(f"Received prompt: {prompt[:100]}...")
+        rospy.logdebug(f"Received prompt: {prompt[:100]}...")
         
         try:
             response = self.current_provider.generate_response(prompt)
-            rospy.loginfo(f"Generated response: {response[:100]}...")
+            rospy.logdebug(f"Generated response: {response[:100]}...")
             
             # Publish response
             response_msg = String()
@@ -218,20 +442,20 @@ class LLMNode:
             self.response_pub.publish(response_msg)
             
         except Exception as e:
-            rospy.logerr(f"Error generating response: {e}")
+            rospy.logerr_throttle(5.0, f"Error generating response: {e}")
     
     def json_prompt_callback(self, msg):
         """Handle incoming JSON prompts from topic"""
         if not self.current_provider:
-            rospy.logwarn("No LLM provider initialized")
+            rospy.logwarn_throttle(5.0, "No LLM provider initialized")
             return
         
         prompt = msg.data
-        rospy.loginfo(f"Received JSON prompt: {prompt[:100]}...")
+        rospy.logdebug(f"Received JSON prompt: {prompt[:100]}...")
         
         try:
             response = self.current_provider.generate_json_response(prompt)
-            rospy.loginfo(f"Generated JSON response: {response[:100]}...")
+            rospy.logdebug(f"Generated JSON response: {response[:100]}...")
             
             # Publish JSON response
             response_msg = String()
@@ -239,7 +463,7 @@ class LLMNode:
             self.json_response_pub.publish(response_msg)
             
         except Exception as e:
-            rospy.logerr(f"Error generating JSON response: {e}")
+            rospy.logerr_throttle(5.0, f"Error generating JSON response: {e}")
     
     def query_service_callback(self, req):
         """Service callback for direct LLM queries"""
@@ -251,7 +475,7 @@ class LLMNode:
             )
         
         try:
-            prompt = req.prompt if req.prompt else "Hello, how are you?"
+            prompt = req.prompt if req.prompt else "Hello, how are you? Please respond in English."
             response = self.current_provider.generate_response(prompt)
             
             return LLMQueryResponse(
@@ -259,11 +483,19 @@ class LLMNode:
                 response=response, 
                 error_message=""
             )
-        except Exception as e:
+        except (ValueError, TypeError, AttributeError) as e:
+            rospy.logerr_throttle(5.0, f"Query service error: {e}")
             return LLMQueryResponse(
                 success=False, 
                 response="", 
-                error_message=str(e)
+                error_message=f"Input error: {str(e)}"
+            )
+        except Exception as e:
+            rospy.logerr_throttle(5.0, f"Unexpected query service error: {e}")
+            return LLMQueryResponse(
+                success=False, 
+                response="", 
+                error_message=f"Service error: {str(e)}"
             )
     
     def json_query_service_callback(self, req):
@@ -276,21 +508,43 @@ class LLMNode:
             )
         
         try:
-            prompt = req.prompt if req.prompt else "Generate a simple JSON object"
+            prompt = req.prompt if req.prompt else "Generate a simple JSON object. Please respond in English."
             schema = json.loads(req.schema) if req.schema else None
             
             response = self.current_provider.generate_json_response(prompt, schema)
             
+            # Format JSON response for better readability using shared function
+            success, formatted_response, error_msg = self._parse_and_format_json(response)
+            
+            if not success:
+                # If parsing fails, return original response
+                formatted_response = response
+            
             return LLMJsonQueryResponse(
                 success=True, 
-                json_response=response, 
+                json_response=formatted_response, 
                 error_message=""
             )
-        except Exception as e:
+        except json.JSONDecodeError as e:
+            rospy.logerr_throttle(5.0, f"JSON schema parsing error: {e}")
             return LLMJsonQueryResponse(
                 success=False, 
                 json_response="", 
-                error_message=str(e)
+                error_message=f"Invalid schema: {str(e)}"
+            )
+        except (ValueError, TypeError, AttributeError) as e:
+            rospy.logerr_throttle(5.0, f"JSON query service error: {e}")
+            return LLMJsonQueryResponse(
+                success=False, 
+                json_response="", 
+                error_message=f"Input error: {str(e)}"
+            )
+        except Exception as e:
+            rospy.logerr_throttle(5.0, f"Unexpected JSON query error: {e}")
+            return LLMJsonQueryResponse(
+                success=False, 
+                json_response="", 
+                error_message=f"Service error: {str(e)}"
             )
     
     def generate_behavior_tree_callback(self, req):
@@ -313,12 +567,12 @@ class LLMNode:
             
             # Generate JSON response (schema validation not supported in current SDK version)
             try:
-                rospy.loginfo("Generating behavior tree JSON...")
+                rospy.logdebug("Generating behavior tree JSON...")
                 response = self.current_provider.generate_json_response(behavior_tree_prompt)
-                rospy.loginfo("JSON generation successful")
+                rospy.logdebug("JSON generation successful")
                 
             except Exception as generation_error:
-                rospy.logerr(f"JSON generation failed: {generation_error}")
+                rospy.logerr_throttle(5.0, f"JSON generation failed: {generation_error}")
                 return GenerateBehaviorTreeResponse(
                     success=False, 
                     behavior_tree_json="", 
@@ -327,7 +581,7 @@ class LLMNode:
             
             # Check if response is empty or None
             if not response or response.strip() == "":
-                rospy.logerr("Empty response received from LLM provider")
+                rospy.logerr_throttle(5.0, "Empty response received from LLM provider")
                 return GenerateBehaviorTreeResponse(
                     success=False, 
                     behavior_tree_json="", 
@@ -342,39 +596,51 @@ class LLMNode:
                 # Additional cleaning for cross-platform JSON parsing
                 cleaned_response = self._sanitize_json_for_parsing(cleaned_response)
                 parsed_json = json.loads(cleaned_response)
-                rospy.loginfo(f"Generated behavior tree JSON: {cleaned_response}")
+                
+                # Format JSON for better readability in service response
+                formatted_json = json.dumps(parsed_json, indent=2, ensure_ascii=False)
+                
+                # Publish behavior tree to web interface for display
+                self._publish_behavior_tree_for_display(formatted_json, task_description)
                 
                 # Basic validation of the structure
                 if 'type' not in parsed_json or 'name' not in parsed_json:
-                    rospy.logwarn("Generated JSON missing required fields (type/name)")
+                    rospy.logwarn_throttle(5.0, "Generated JSON missing required fields (type/name)")
                 
-                # Always call the behavior tree assembly service automatically
-                assembly_success, assembly_message = self._call_behavior_tree_assembly(cleaned_response)
-                
-                if assembly_success:
-                    rospy.loginfo(f"Behavior tree assembled successfully: {assembly_message}")
+                # Check for irrelevant instructions (empty behavior tree)
+                if 'children' in parsed_json and len(parsed_json['children']) == 0:
+                    rospy.logdebug("Irrelevant instruction detected - returning empty behavior tree")
                     return GenerateBehaviorTreeResponse(
                         success=True, 
-                        behavior_tree_json=cleaned_response, 
+                        behavior_tree_json=formatted_json, 
+                        error_message="Irrelevant instruction - no action required"
+                    )
+                
+                # Always call the behavior tree assembly service automatically
+                assembly_success, assembly_message = self._call_behavior_tree_assembly(formatted_json)
+                
+                if assembly_success:
+                    rospy.loginfo(f"✅ Behavior tree assembled: {assembly_message}")
+                    return GenerateBehaviorTreeResponse(
+                        success=True, 
+                        behavior_tree_json=formatted_json, 
                         error_message=""
                     )
                 else:
-                    rospy.logwarn(f"Behavior tree assembly failed: {assembly_message}")
+                    rospy.logwarn_throttle(5.0, f"⚠️ Behavior tree assembly failed: {assembly_message}")
                     # Still return success for JSON generation, but include assembly warning
                     return GenerateBehaviorTreeResponse(
                         success=True, 
-                        behavior_tree_json=cleaned_response, 
+                        behavior_tree_json=formatted_json, 
                         error_message=f"JSON generated but assembly failed: {assembly_message}"
                     )
                 
             except json.JSONDecodeError as e:
-                rospy.logerr(f"Generated response is not valid JSON: {e}")
-                rospy.logerr(f"Original response length: {len(response)} chars")
-                rospy.logerr(f"Cleaned response length: {len(cleaned_response)} chars")
-
-                # Show first 200 chars of each for debugging
-                rospy.logerr(f"Original response (first 200 chars): {response[:200]}")
-                rospy.logerr(f"Cleaned response (first 200 chars): {cleaned_response[:200]}")
+                rospy.logerr_throttle(5.0, f"Generated response is not valid JSON: {e}")
+                rospy.logdebug(f"Original response length: {len(response)} chars")
+                rospy.logdebug(f"Cleaned response length: {len(cleaned_response)} chars")
+                rospy.logdebug(f"Original response (first 200 chars): {response[:200]}")
+                rospy.logdebug(f"Cleaned response (first 200 chars): {cleaned_response[:200]}")
 
                 return GenerateBehaviorTreeResponse(
                     success=False,
@@ -383,11 +649,11 @@ class LLMNode:
                 )
                 
         except Exception as e:
-            rospy.logerr(f"Error generating behavior tree: {e}")
+            rospy.logerr_throttle(5.0, f"Error generating behavior tree: {e}")
             return GenerateBehaviorTreeResponse(
                 success=False, 
                 behavior_tree_json="", 
-                error_message=str(e)
+                error_message=f"Unexpected error: {str(e)}"
             )
     
     def status_service_callback(self, req):
@@ -426,18 +692,10 @@ class LLMNode:
             if not isinstance(response, str):
                 response = str(response)
             
-            # First, try to find JSON within code blocks
-            code_block_patterns = [
-                r'```(?:json|JSON)?\s*(\{.*?\})\s*```',  # Standard markdown
-                r'`{3,}\s*(?:json|JSON)?\s*(\{.*?\})\s*`{3,}',  # Flexible backtick count
-                r'~~~(?:json|JSON)?\s*(\{.*?\})\s*~~~',  # Alternative code block style
-                r'<code[^>]*>\s*(\{.*?\})\s*</code>',  # HTML code tags
-                r'(?:json|JSON):\s*(\{.*?\})',  # Label prefix
-            ]
-            
-            for pattern in code_block_patterns:
+            # First, try to find JSON within code blocks using pre-compiled patterns
+            for pattern in REGEX_CODE_BLOCKS:
                 try:
-                    json_blocks = re.findall(pattern, response, re.DOTALL | re.IGNORECASE)
+                    json_blocks = pattern.findall(response)
                     if json_blocks:
                         candidate = json_blocks[0].strip()
                         if self._is_valid_json_structure(candidate):
@@ -448,9 +706,9 @@ class LLMNode:
             # Look for JSON objects in the text with brace matching
             json_candidates = []
             
-            # Find all potential JSON start positions
+            # Find all potential JSON start positions using pre-compiled pattern
             try:
-                for match in re.finditer(r'\{', response):
+                for match in REGEX_JSON_CLEANING['brace_start'].finditer(response):
                     start_idx = match.start()
                     json_str = self._extract_balanced_braces(response, start_idx)
                     if json_str and self._is_valid_json_structure(json_str):
@@ -521,8 +779,8 @@ class LLMNode:
         if not (text.startswith('{') and text.endswith('}')):
             return False
         
-        # Should contain basic JSON patterns
-        has_quotes = bool(re.search(r'"[^"]*"', text))
+        # Should contain basic JSON patterns using pre-compiled regex
+        has_quotes = bool(REGEX_JSON_CLEANING['quotes_pattern'].search(text))
         has_colons = ':' in text
         
         return has_quotes and has_colons
@@ -530,9 +788,9 @@ class LLMNode:
     def _clean_response_text(self, response: str) -> str:
         """Clean response text while preserving JSON formatting"""
         try:
-            # Remove common prefixes/suffixes that LLMs might add
-            response = re.sub(r'^.*?(?=\{)', '', response, flags=re.DOTALL)  # Remove text before first {
-            response = re.sub(r'\}.*?$', '}', response, flags=re.DOTALL)     # Remove text after last }
+            # Remove common prefixes/suffixes that LLMs might add using pre-compiled patterns
+            response = REGEX_JSON_CLEANING['pre_json_text'].sub('', response)   # Remove text before first {
+            response = REGEX_JSON_CLEANING['post_json_text'].sub('}', response) # Remove text after last }
             
             # Only normalize excessive whitespace, but preserve reasonable formatting
             # Remove leading/trailing whitespace from each line, but keep line breaks
@@ -553,18 +811,17 @@ class LLMNode:
                 json_str = str(json_str)
             
             # Fix common JSON formatting issues without destroying formatting
-            # Replace single quotes with double quotes (but not inside strings)
-            json_str = re.sub(r"(?<!\\)'([^']*?)(?<!\\)'", r'"\1"', json_str)
+            # Replace single quotes with double quotes (but not inside strings) using pre-compiled pattern
+            json_str = REGEX_JSON_CLEANING['single_quotes'].sub(r'"\1"', json_str)
             
-            # Fix trailing commas before closing braces/brackets
-            json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+            # Fix trailing commas before closing braces/brackets using pre-compiled pattern
+            json_str = REGEX_JSON_CLEANING['trailing_commas'].sub(r'\1', json_str)
             
-            # Validate and pretty-format if possible
+            # Validate JSON structure first
             try:
-                import json
                 parsed = json.loads(json_str)
-                # Re-format with proper indentation
-                json_str = json.dumps(parsed, indent=2, ensure_ascii=False)
+                # Return the cleaned but not yet formatted version for parsing
+                return json.dumps(parsed, separators=(',', ':'))
             except (json.JSONDecodeError, UnicodeDecodeError):
                 # If parsing fails, just do minimal cleaning
                 # Ensure proper spacing around colons and commas only if not already formatted

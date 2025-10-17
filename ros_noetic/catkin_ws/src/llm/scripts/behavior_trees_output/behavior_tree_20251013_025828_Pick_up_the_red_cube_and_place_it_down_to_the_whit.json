@@ -1,0 +1,34 @@
+{
+  "type": "sequence",
+  "name": "PickAndPlaceToWhiteRegion",
+  "children": [
+    {
+      "type": "detect_objects",
+      "name": "DetectObjects"
+    },
+    {
+      "type": "move_above_object",
+      "name": "MoveAboveRedCube",
+      "target_object_class": "cube",
+      "target_color": "red",
+      "z_offset": 0.1
+    },
+    {
+      "type": "pick_up",
+      "name": "PickUpRedCube"
+    },
+    {
+      "type": "move_to_white_region",
+      "name": "MoveToWhiteRegion",
+      "z_height": 0.3
+    },
+    {
+      "type": "place_down",
+      "name": "PlaceInWhiteRegion"
+    },
+    {
+      "type": "move_to_home",
+      "name": "ReturnHome"
+    }
+  ]
+}

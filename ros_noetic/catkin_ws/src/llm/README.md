@@ -1,104 +1,43 @@
-# LLM Node Usage Guide
+# LLM Node 使用指南
 
-This guide explains how to use the LLM (Large Language Model) node in ROS for text generation and behavior tree configuration.
+本指南說明如何在 ROS 中使用 LLM（Large Language Model，大型語言模型）節點進行文字生成和行為樹配置。
 
-## Table of Contents
-- [Prerequisites](#prerequisites)
-- [Starting the LLM Node](#starting-the-llm-node)
-- [ROS Topics](#ros-topics)
-- [ROS Services](#ros-services)
-- [Usage Examples](#### Available Behavior Types
-- **detect_objects**: For detecting objects in the environment using YOLO vision system
-- **pick_up**: For picking up objects using robot arm and gripper coordination
-- **place_down**: For placing objects at specified coordinates (supports place_x, place_y, place_z parameters)
-- **open_gripper**: For opening the robot gripper mechanism
-- **close_gripper**: For closing the robot gripper mechanism
-- **move_to_home**: For moving robot to home/rest position safely
-- **sequence**: Execute children in order (all must succeed for sequence success)
-- **selector**: Try children until one succeeds (first success completes selector)
+## 目錄
+- [先決條件](#先決條件)
+- [啟動 LLM Node](#啟動-llm-node)
+- [ROS 主題](#ros-主題)
+- [ROS 服務](#ros-服務)
+- [使用範例](#使用範例)
+- [行為樹整合](#行為樹整合)
+- [故障排除](#故障排除)
 
-### Enhanced Behavior Tree Examples
+## 先決條件
 
-#### Basic Pick and Place with Gripper Control
-```json
-{
-  "type": "sequence",
-  "name": "Basic Pick and Place",
-  "children": [
-    {"type": "detect_objects", "name": "Scan Environment"},
-    {"type": "open_gripper", "name": "Prepare Gripper"},
-    {"type": "pick_up", "name": "Grasp Object"},
-    {"type": "place_down", "name": "Place Object", "place_x": 0.15, "place_y": -0.15, "place_z": 0.18},
-    {"type": "move_to_home", "name": "Return to Rest"}
-  ]
-}
-```
-
-#### Object Sorting with Multi-Location Placement
-```json
-{
-  "type": "sequence",
-  "name": "Object Sorting System",
-  "children": [
-    {"type": "detect_objects", "name": "Scan Workspace"},
-    {"type": "selector", "name": "Sort By Color", "children": [
-      {"type": "sequence", "name": "Red Object Processing", "children": [
-        {"type": "pick_up", "name": "Pick Red Object"},
-        {"type": "place_down", "name": "Red Zone", "place_x": 0.12, "place_y": -0.18, "place_z": 0.18}
-      ]},
-      {"type": "sequence", "name": "Blue Object Processing", "children": [
-        {"type": "pick_up", "name": "Pick Blue Object"},
-        {"type": "place_down", "name": "Blue Zone", "place_x": 0.18, "place_y": -0.12, "place_z": 0.18}
-      ]}
-    ]},
-    {"type": "move_to_home", "name": "Task Complete"}
-  ]
-}
-```
-
-#### Gripper Test Sequence
-```json
-{
-  "type": "sequence",
-  "name": "Gripper Function Test",
-  "children": [
-    {"type": "open_gripper", "name": "Test Open"},
-    {"type": "close_gripper", "name": "Test Close"},
-    {"type": "open_gripper", "name": "Reset Open"},
-    {"type": "move_to_home", "name": "Return Home"}
-  ]
-}
-```examples)
-- [Behavior Tree Integration](#behavior-tree-integration)
-- [Troubleshooting](#troubleshooting)
-
-## Prerequisites
-
-### 1. Environment Setup
-Before using the LLM node, ensure your ROS environment is properly configured:
+### 1. 環境設定
+在使用 LLM 節點之前，請確保您的 ROS 環境已正確配置：
 
 ```bash
-# Inside the Docker container
+# 在 Docker 容器內
 source /opt/ros/noetic/setup.bash
 source /root/catkin_ws/devel/setup.bash
 ```
 
-### 2. API Keys Configuration
-Set up your API keys for the LLM providers:
+### 2. API 金鑰配置
+為 LLM 提供者設定 API 金鑰：
 
 ```bash
-# For Google Gemini (recommended)
+# 適用於 Google Gemini（推薦）
 export GEMINI_API_KEY="your_gemini_api_key_here"
 
-# Alternative: Google API Key
+# 替代方案：Google API 金鑰
 export GOOGLE_API_KEY="your_google_api_key_here"
 
-# For OpenAI (optional)
+# 適用於 OpenAI（可選）
 export OPENAI_API_KEY="your_openai_api_key_here"
 ```
 
-### 3. Build the Workspace
-Make sure the workspace is built:
+### 3. 建置工作區
+確保工作區已建置：
 
 ```bash
 cd /root/catkin_ws
@@ -106,298 +45,298 @@ catkin_make
 source devel/setup.bash
 ```
 
-## Starting the LLM Node
+## 啟動 LLM Node
 
-### Option 1: Direct Execution
+### 選項 1：直接執行
 ```bash
-# Start with default Gemini provider
+# 使用預設 Gemini 提供者啟動
 rosrun llm llm_node.py
 
-# Start with specific provider
+# 使用特定提供者啟動
 rosrun llm llm_node.py _provider:=gemini
 rosrun llm llm_node.py _provider:=openai
 ```
 
-### Option 2: Using Launch File
+### 選項 2：使用啟動檔案
 ```bash
-# Launch all nodes including LLM node
+# 啟動包含 LLM 節點的所有節點
 roslaunch launcher all_nodes.launch llm_provider:=gemini
 
-# Or with OpenAI
+# 或使用 OpenAI
 roslaunch launcher all_nodes.launch llm_provider:=openai
 ```
 
-### Option 3: Individual Node Launch
+### 選項 3：個別節點啟動
 ```bash
-# Create a simple launch file or run directly
+# 建立簡單的啟動檔案或直接執行
 roscore &
 rosrun llm llm_node.py _provider:=gemini
 ```
 
-## ROS Topics
+## ROS 主題
 
-### Publishers
-The LLM node publishes responses on these topics:
+### 發佈者
+LLM 節點在這些主題上發佈回應：
 
-| Topic | Message Type | Description |
-|-------|-------------|-------------|
-| `/llm_response` | `std_msgs/String` | Text responses from LLM |
-| `/llm_json_response` | `std_msgs/String` | JSON responses from LLM |
+| 主題 | 訊息類型 | 描述 |
+|------|----------|------|
+| `/llm_response` | `std_msgs/String` | 來自 LLM 的文字回應 |
+| `/llm_json_response` | `std_msgs/String` | 來自 LLM 的 JSON 回應 |
 
-### Subscribers
-The LLM node listens to these topics:
+### 訂閱者
+LLM 節點監聽這些主題：
 
-| Topic | Message Type | Description |
-|-------|-------------|-------------|
-| `/llm_prompt` | `std_msgs/String` | Text prompts to LLM |
-| `/llm_json_prompt` | `std_msgs/String` | JSON-specific prompts |
+| 主題 | 訊息類型 | 描述 |
+|------|----------|------|
+| `/llm_prompt` | `std_msgs/String` | 發送給 LLM 的文字提示 |
+| `/llm_json_prompt` | `std_msgs/String` | JSON 特定的提示 |
 
-### Topic Usage Examples
+### 主題使用範例
 
-#### Text Generation
+#### 文字生成
 ```bash
-# Send a text prompt
-rostopic pub /llm_prompt std_msgs/String "data: 'Explain how robots work'"
+# 發送文字提示
+rostopic pub /llm_prompt std_msgs/String "data: '解釋機器人如何運作'"
 
-# Listen to responses
+# 監聽回應
 rostopic echo /llm_response
 ```
 
-#### JSON Generation
+#### JSON 生成
 ```bash
-# Send a JSON prompt
-rostopic pub /llm_json_prompt std_msgs/String "data: 'Generate a JSON configuration for robot movement'"
+# 發送 JSON 提示
+rostopic pub /llm_json_prompt std_msgs/String "data: '為機器人移動生成 JSON 配置'"
 
-# Listen to JSON responses
+# 監聽 JSON 回應
 rostopic echo /llm_json_response
 ```
 
-## ROS Services
+## ROS 服務
 
-The LLM node provides custom service interfaces for structured communication:
+LLM 節點提供自訂服務介面以進行結構化通訊：
 
-### Service Message Formats
+### 服務訊息格式
 
-#### LLMQuery Service
+#### LLMQuery 服務
 ```
-# Request
+# 請求
 string prompt
 
-# Response
+# 回應
 bool success
 string response
 string error_message
 ```
 
-#### LLMJsonQuery Service
+#### LLMJsonQuery 服務
 ```
-# Request
+# 請求
 string prompt
-string schema  # Optional JSON schema for validation
+string schema  # 可選的 JSON 結構描述以進行驗證
 
-# Response
+# 回應
 bool success
 string json_response
 string error_message
 ```
 
-#### GenerateBehaviorTree Service
+#### GenerateBehaviorTree 服務
 ```
-# Request
+# 請求
 string task_description
 
-# Response
+# 回應
 bool success
 string behavior_tree_json
 string error_message
 ```
 
-#### LLMStatus Service
+#### LLMStatus 服務
 ```
-# Request
-# (empty)
+# 請求
+# (空)
 
-# Response
+# 回應
 bool success
 string provider_name
 bool is_available
 string status_message
 ```
 
-### Available Services
+### 可用服務
 
-| Service | Service Type | Description |
-|---------|-------------|-------------|
-| `/llm_query` | `llm/LLMQuery` | Direct text query with prompt |
-| `/llm_json_query` | `llm/LLMJsonQuery` | JSON query with optional schema |
-| `/generate_behavior_tree` | `llm/GenerateBehaviorTree` | Generate behavior tree JSON |
-| `/llm_status` | `llm/LLMStatus` | Check LLM provider status |
+| 服務 | 服務類型 | 描述 |
+|------|----------|------|
+| `/llm_query` | `llm/LLMQuery` | 帶提示的直接文字查詢 |
+| `/llm_json_query` | `llm/LLMJsonQuery` | 帶可選結構描述的 JSON 查詢 |
+| `/generate_behavior_tree` | `llm/GenerateBehaviorTree` | 生成行為樹 JSON |
+| `/llm_status` | `llm/LLMStatus` | 檢查 LLM 提供者狀態 |
 
-### Service Usage Examples
+### 服務使用範例
 
-#### Text Query Service
+#### 文字查詢服務
 ```bash
-# Direct text query with custom prompt
-rosservice call /llm_query "prompt: 'What is artificial intelligence?'"
+# 使用自訂提示進行直接文字查詢
+rosservice call /llm_query "prompt: '什麼是人工智慧？'"
 ```
 
-#### JSON Query Service
+#### JSON 查詢服務
 ```bash
-# Direct JSON query with prompt and optional schema
-rosservice call /llm_json_query "prompt: 'Create a JSON object with robot commands for navigation' schema: ''"
+# 使用提示和可選結構描述進行直接 JSON 查詢
+rosservice call /llm_json_query "prompt: '建立包含機器人導航命令的 JSON 物件' schema: ''"
 
-# With JSON schema validation (for Gemini)
-rosservice call /llm_json_query "prompt: 'Generate robot configuration' schema: '{\"type\": \"object\", \"properties\": {\"joints\": {\"type\": \"array\"}}}'"
+# 使用 JSON 結構描述驗證（適用於 Gemini）
+rosservice call /llm_json_query "prompt: '生成機器人配置' schema: '{\"type\": \"object\", \"properties\": {\"joints\": {\"type\": \"array\"}}}'"
 ```
 
-#### Behavior Tree Generation
+#### 行為樹生成
 ```bash
-# Method 1: Using proper YAML multiline format (RECOMMENDED)
+# 方法 1：使用適當的 YAML 多行格式（推薦）
 rosservice call /generate_behavior_tree "
-task_description: 'Pick up a red cube and place it on the blue table'
+task_description: '拿起紅色立方體並將其放置在藍色桌子上'
 "
 
-# Method 2: Using inline YAML with proper structure
-rosservice call /generate_behavior_tree "{task_description: 'Sort objects by color'}"
+# 方法 2：使用內聯 YAML 並保持適當結構
+rosservice call /generate_behavior_tree "{task_description: '按顏色排序物件'}"
 
-# Method 3: Using traditional ROS service call format
-rosservice call /generate_behavior_tree -- "task_description: 'Pick up object'"
+# 方法 3：使用傳統 ROS 服務呼叫格式
+rosservice call /generate_behavior_tree -- "task_description: '拿起物件'"
 
-# Method 4: Generate with default task
+# 方法 4：使用預設任務生成
 rosservice call /generate_behavior_tree "task_description: ''"
 ```
 
-**Note**: Behavior tree assembly is now automatic - no need to specify auto_assemble parameter!
+**注意**：行為樹組裝現在是自動的 - 不需要指定 auto_assemble 參數！
 
-#### Status Check
+#### 狀態檢查
 ```bash
-# Check LLM provider status and availability
+# 檢查 LLM 提供者狀態和可用性
 rosservice call /llm_status
 ```
 
-## Usage Examples
+## 使用範例
 
-### Example 1: Basic Text Generation Workflow
+### 範例 1：基本文字生成工作流程
 
 ```bash
-# Terminal 1: Start the LLM node
+# 終端機 1：啟動 LLM 節點
 rosrun llm llm_node.py _provider:=gemini
 
-# Terminal 2: Send prompts and monitor responses
-rostopic pub /llm_prompt std_msgs/String "data: 'Describe the three laws of robotics'"
+# 終端機 2：發送提示並監控回應
+rostopic pub /llm_prompt std_msgs/String "data: '描述機器人三定律'"
 rostopic echo /llm_response
 ```
 
-### Example 2: JSON Configuration Generation
+### 範例 2：JSON 配置生成
 
 ```bash
-# Terminal 1: Start the LLM node
+# 終端機 1：啟動 LLM 節點
 rosrun llm llm_node.py
 
-# Terminal 2: Generate JSON configuration
-rostopic pub /llm_json_prompt std_msgs/String "data: 'Create a JSON configuration for a 6-DOF robot arm with joint limits'"
+# 終端機 2：生成 JSON 配置
+rostopic pub /llm_json_prompt std_msgs/String "data: '為 6-DOF 機器人手臂建立包含關節限制的 JSON 配置'"
 
-# Terminal 3: Monitor JSON responses
+# 終端機 3：監控 JSON 回應
 rostopic echo /llm_json_response
 ```
 
-### Example 3: Behavior Tree Generation and Auto-Assembly
+### 範例 3：行為樹生成和自動組裝
 
 ```bash
-# Terminal 1: Start the behavior tree node
+# 終端機 1：啟動行為樹節點
 rosrun behavior_tree behavior_tree_node.py
 
-# Terminal 2: Start the LLM node
+# 終端機 2：啟動 LLM 節點
 rosrun llm llm_node.py _provider:=gemini
 
-# Terminal 3: Generate comprehensive robotic task (auto-assembly is automatic)
+# 終端機 3：生成綜合機器人任務（自動組裝是自動的）
 rosservice call /generate_behavior_tree "
-task_description: 'Robot should scan for red and blue blocks, sort them into separate zones, and return to home position'
+task_description: '機器人應該掃描紅色和藍色積木，將它們排序到單獨區域，然後返回原位'
 "
 
-# Expected response format:
+# 預期回應格式：
 # success: True
-# behavior_tree_json: "{ ... JSON configuration with detect_objects, pick_up, place_down, move_to_home ... }"
+# behavior_tree_json: "{ ... 包含 detect_objects、pick_up、place_down、move_to_home 的 JSON 配置 ... }"
 # error_message: ""
 
-# Terminal 4: Monitor real-time behavior tree execution
+# 終端機 4：監控即時行為樹執行
 rostopic echo /behavior_tree_status
 
-# Terminal 5: Generate gripper test sequence
+# 終端機 5：生成夾爪測試序列
 rosservice call /generate_behavior_tree "
-task_description: 'Test gripper functionality by opening and closing it several times'
+task_description: '通過多次開啟和關閉來測試夾爪功能'
 "
 ```
 
-### Example 4: Enhanced Behavior Tree Workflow with Complete Robot Integration
+### 範例 4：增強行為樹工作流程與完整機器人整合
 
 ```bash
-# Terminal 1: Start behavior tree node first
+# 終端機 1：首先啟動行為樹節點
 rosrun behavior_tree behavior_tree_node.py
 
-# Terminal 2: Start YOLO detection node for vision
+# 終端機 2：啟動 YOLO 檢測節點以進行視覺處理
 rosrun yolo_detection yolo_detection_node.py
 
-# Terminal 3: Start robot control node
+# 終端機 3：啟動機器人控制節點
 rosrun robot_control robot_control_node.py
 
-# Terminal 4: Start LLM node 
+# 終端機 4：啟動 LLM 節點
 rosrun llm llm_node.py _provider:=gemini
 
-# Terminal 5: Generate and execute complete robotic workflows (auto-assembly is automatic)
+# 終端機 5：生成並執行完整機器人工作流程（自動組裝是自動的）
 rosservice call /generate_behavior_tree "
-task_description: 'Sort objects by color: pick up red blocks and place them in the red zone at coordinates (0.12, -0.18, 0.18), pick up blue blocks and place them in the blue zone at (0.18, -0.12, 0.18), then return home'
+task_description: '按顏色排序物件：拿起紅色積木並將它們放置在紅色區域坐標 (0.12, -0.18, 0.18)，拿起藍色積木並將它們放置在藍色區域 (0.18, -0.12, 0.18)，然後返回原位'
 "
 
-# Terminal 6: Monitor live execution status
+# 終端機 6：監控即時執行狀態
 rostopic echo /behavior_tree_status
 
-# Terminal 7: Monitor YOLO detections
+# 終端機 7：監控 YOLO 檢測
 rostopic echo /yolo_detected_targets
 
-# Example task variations:
-# Simple pick and place:
+# 任務變體範例：
+# 簡單拿起和放置：
 rosservice call /generate_behavior_tree "
-task_description: 'Pick up any object and place it at coordinates (0.15, -0.15, 0.18)'
+task_description: '拿起任何物件並將其放置在坐標 (0.15, -0.15, 0.18)'
 "
 
-# Gripper control sequence:
+# 夾爪控制序列：
 rosservice call /generate_behavior_tree "
-task_description: 'Open gripper, close gripper, then move to home position'
+task_description: '開啟夾爪，關閉夾爪，然後移動到原位'
 "
 
-# Complex multi-step task:
+# 複雜多步驟任務：
 rosservice call /generate_behavior_tree "
-task_description: 'Detect all objects, pick them up one by one, stack them at location (0.20, -0.10, 0.18), and ensure gripper is open when finished'
+task_description: '檢測所有物件，一一拿起它們，將它們堆疊在位置 (0.20, -0.10, 0.18)，並確保完成時夾爪是開啟的'
 "
 ```
 
-## Behavior Tree Integration
+## 行為樹整合
 
-The LLM node can generate behavior trees compatible with the behavior tree node and automatically assembles them after JSON generation.
+LLM 節點可以生成與行為樹節點相容的行為樹，並在 JSON 生成後自動組裝它們。
 
-### Auto-Assembly Feature
-- **Always enabled**: The LLM node automatically calls `/assemble_behavior_tree` service after JSON generation
-- **Seamless workflow**: Single service call goes from task description to active behavior tree
-- **Robust error handling**: If assembly fails, JSON generation still succeeds with warning message
-- **Simplified interface**: No need to specify assembly parameters - it's automatic
+### 自動組裝功能
+- **始終啟用**：LLM 節點在 JSON 生成後自動呼叫 `/assemble_behavior_tree` 服務
+- **無縫工作流程**：單一服務呼叫從任務描述轉換為活躍的行為樹
+- **強健的錯誤處理**：如果組裝失敗，JSON 生成仍會成功並顯示警告訊息
+- **簡化的介面**：不需要指定組裝參數 - 它是自動的
 
-### Integration Flow
-1. **JSON Generation**: LLM generates behavior tree JSON based on task description
-2. **Auto-Assembly**: Generated JSON is automatically sent to `/assemble_behavior_tree`
-3. **Real-time Execution**: Behavior tree begins executing immediately with live status updates
-4. **JSON Status Publishing**: Tree status published via `/behavior_tree_status` topic during execution
-5. **Automatic Termination**: Tree terminates when root reaches SUCCESS or FAILURE status
-6. **Ready for Next Task**: System waits for next behavior tree generation request
+### 整合流程
+1. **JSON 生成**：LLM 根據任務描述生成行為樹 JSON
+2. **自動組裝**：生成的 JSON 自動發送到 `/assemble_behavior_tree`
+3. **即時執行**：行為樹立即開始執行並提供即時狀態更新
+4. **JSON 狀態發佈**：執行期間通過 `/behavior_tree_status` 主題發佈樹狀結構狀態
+5. **自動終止**：當根節點達到 SUCCESS 或 FAILURE 狀態時，樹狀結構終止
+6. **準備下一個任務**：系統等待下一個行為樹生成請求
 
-### Robot Integration Features
-- **YOLO Vision Integration**: `detect_objects` subscribes to `/yolo_detected_targets` for real-time object detection
-- **Robot Control Integration**: All robot behaviors use `/arm_command` service for Niryo robot control
-- **Blackboard Data Sharing**: Detected objects and manipulation data shared between behaviors
-- **Coordinate System**: Robot coordinates in meters, with configurable placement positions
-- **Error Handling**: Graceful failure recovery with detailed error reporting
+### 機器人整合功能
+- **YOLO 視覺整合**：`detect_objects` 訂閱 `/yolo_detected_targets` 以進行即時物件檢測
+- **機器人控制整合**：所有機器人行為使用 `/arm_command` 服務進行 Niryo 機器人控制
+- **黑板資料共享**：在行為之間共享檢測到的物件和操作資料
+- **坐標系統**：機器人坐標以公尺為單位，具有可配置的放置位置
+- **錯誤處理**：優雅的失敗恢復並提供詳細的錯誤報告
 
-The generated JSON follows this structure:
+生成的 JSON 遵循以下結構：
 
 ```json
 {
@@ -431,302 +370,302 @@ The generated JSON follows this structure:
 }
 ```
 
-### Available Behavior Types
-- `detect_objects`: Object detection behavior
-- `pick_up`: Object grasping behavior  
-- `place_down`: Object placement behavior
-- `sequence`: Execute children in order (all must succeed)
-- `selector`: Try children until one succeeds
+### 可用行為類型
+- `detect_objects`：物件檢測行為
+- `pick_up`：物件抓取行為
+- `place_down`：物件放置行為
+- `sequence`：按順序執行子項（全部必須成功）
+- `selector`：嘗試子項直到一個成功（第一個成功完成選擇器）
 
-## Troubleshooting
+## 故障排除
 
-### Common Issues
+### 常見問題
 
-#### 1. API Key Not Found
+#### 1. 找不到 API 金鑰
 ```bash
-# Error: "Failed to initialize provider"
-# Solution: Set the API key
+# 錯誤："Failed to initialize provider"
+# 解決方案：設定 API 金鑰
 export GEMINI_API_KEY="your_api_key"
 ```
 
-#### 2. Node Not Starting
+#### 2. 節點無法啟動
 ```bash
-# Error: "No module named 'setup'"
-# Solution: Ensure you're in the correct directory and workspace is built
+# 錯誤："No module named 'setup'"
+# 解決方案：確保您在正確的目錄中且工作區已建置
 cd /root/catkin_ws
 source devel/setup.bash
 ```
 
-#### 3. No Response from LLM
+#### 3. LLM 沒有回應
 ```bash
-# Check if provider is available
+# 檢查提供者是否可用
 rosservice call /llm_status
 
-# Check ROS topics
+# 檢查 ROS 主題
 rostopic list | grep llm
 ```
 
-#### 4. Service Call Errors
+#### 4. 服務呼叫錯誤
 ```bash
-# Error: expected <block end>, but found '<scalar>' - YAML parsing error
-# Problem: Incorrect service call syntax
+# 錯誤：expected <block end>, but found '<scalar>' - YAML 解析錯誤
+# 問題：不正確的服務呼叫語法
 # 
-# Solutions (choose one):
-# Method 1 - Multiline YAML (RECOMMENDED):
+# 解決方案（選擇一個）：
+# 方法 1 - 多行 YAML（推薦）：
 rosservice call /generate_behavior_tree "
-task_description: 'Pick up a red cube'
+task_description: '拿起紅色立方體'
 "
 
-# Method 2 - JSON-style inline:
-rosservice call /generate_behavior_tree "{task_description: 'Pick up the red cube'}"
+# 方法 2 - JSON 風格內聯：
+rosservice call /generate_behavior_tree "{task_description: '拿起紅色立方體'}"
 
-# Method 3 - Traditional ROS format:
-rosservice call /generate_behavior_tree -- "task_description: 'Pick up cube'"
+# 方法 3 - 傳統 ROS 格式：
+rosservice call /generate_behavior_tree -- "task_description: '拿起立方體'"
 
-# Error: "No field name [data]" when calling /generate_behavior_tree
-# Solution: Use the correct field name 'task_description'
-# Wrong: rosservice call /generate_behavior_tree "data: ''"
-# Correct: rosservice call /generate_behavior_tree "task_description: ''"
+# 呼叫 /generate_behavior_tree 時錯誤："No field name [data]"
+# 解決方案：使用正確的欄位名稱 'task_description'
+# 錯誤：rosservice call /generate_behavior_tree "data: ''"
+# 正確：rosservice call /generate_behavior_tree "task_description: ''"
 
-# Error: "Incompatible arguments to call service"
-# Solution: Check the service message format using:
+# 錯誤："Incompatible arguments to call service"
+# 解決方案：使用以下命令檢查服務訊息格式：
 rosservice info /generate_behavior_tree
 
-# Error: "JSON generated but assembly failed: Behavior tree assembly service not available"
-# Solution: Start the behavior tree node before the LLM node:
+# 錯誤："JSON generated but assembly failed: Behavior tree assembly service not available"
+# 解決方案：在 LLM 節點之前啟動行為樹節點：
 rosrun behavior_tree behavior_tree_node.py
-# Then restart LLM node:
+# 然後重新啟動 LLM 節點：
 rosrun llm llm_node.py _provider:=gemini
 
-# Note: The behavior tree assembly service uses a custom service interface:
+# 注意：行為樹組裝服務使用自訂服務介面：
 # /assemble_behavior_tree (behavior_tree/AssembleBehaviorTree)
-# Request: string behavior_tree_json
-# Response: bool success, string message
+# 請求：string behavior_tree_json
+# 回應：bool success, string message
 ```
 
-#### 5. JSON Schema Validation Errors
+#### 5. JSON 結構描述驗證錯誤
 ```bash
-# Error: "GenerateContentRequest.generation_config.response_schema.properties..."
-# This indicates schema validation issues with Gemini API
-# The node automatically falls back to generation without schema validation
+# 錯誤："GenerateContentRequest.generation_config.response_schema.properties..."
+# 這表示 Gemini API 的結構描述驗證問題
+# 節點會自動回退到不使用結構描述驗證的生成
 
-# Error: "Invalid JSON generated: Expecting value: line 1 column 1 (char 0)"
-# This means the LLM returned empty or malformed JSON
-# Solutions:
-# 1. Check API key is valid
+# 錯誤："Invalid JSON generated: Expecting value: line 1 column 1 (char 0)"
+# 這表示 LLM 返回了空或格式錯誤的 JSON
+# 解決方案：
+# 1. 檢查 API 金鑰是否有效
 rosservice call /llm_status
 
-# 2. Try with a simpler task description
-rosservice call /generate_behavior_tree "task_description: 'pick up object'"
+# 2. 使用更簡單的任務描述嘗試
+rosservice call /generate_behavior_tree "task_description: '拿起物件'"
 
-# 3. Try using OpenAI provider instead
+# 3. 改用 OpenAI 提供者
 rosrun llm llm_node.py _provider:=openai
 ```
 
-#### 6. Empty Response Issues
+#### 6. 空回應問題
 ```bash
-# Error: "Invalid JSON generated"
-# This can happen with OpenAI provider. Try using Gemini for better JSON compliance
+# 錯誤："Invalid JSON generated"
+# 這可能發生在使用 OpenAI 提供者時。嘗試使用 Gemini 以獲得更好的 JSON 相容性
 rosrun llm llm_node.py _provider:=gemini
 ```
 
-### Debug Commands
+### 除錯命令
 
 ```bash
-# Check if node is running
+# 檢查節點是否正在運行
 rosnode list | grep llm
 
-# Monitor node output
+# 監控節點輸出
 rosrun llm llm_node.py _provider:=gemini
 
-# Check topics
+# 檢查主題
 rostopic list | grep llm
 
-# Check services and their message formats
+# 檢查服務及其訊息格式
 rosservice list | grep llm
 rosservice info /llm_query
 rosservice info /generate_behavior_tree
 
-# Test basic functionality
+# 測試基本功能
 rosservice call /llm_status
 
-# Test each service with correct syntax (use proper YAML formatting)
+# 使用正確語法測試每個服務（使用適當的 YAML 格式）
 rosservice call /llm_query "prompt: 'Hello'"
 rosservice call /generate_behavior_tree "
-task_description: 'test task'
+task_description: '測試任務'
 auto_assemble: true
 "
-rosservice call /generate_behavior_tree "{task_description: 'test task', auto_assemble: false}"
+rosservice call /generate_behavior_tree "{task_description: '測試任務', auto_assemble: false}"
 ```
 
-### Log Levels
-To get more detailed logging:
+### 日誌等級
+要獲得更詳細的日誌記錄：
 
 ```bash
-# Set ROS log level to DEBUG
+# 將 ROS 日誌等級設定為 DEBUG
 export ROSCONSOLE_CONFIG_FILE=/path/to/debug/config
-# Or modify the node to include more logging
+# 或修改節點以包含更多日誌記錄
 ```
 
-## Advanced Usage
+## 進階使用
 
-### Enhanced Task Description Capabilities
+### 增強任務描述功能
 
-The LLM node now supports generating complex robotic behaviors with the following enhanced capabilities:
+LLM 節點現在支援生成複雜機器人行為，具有以下增強功能：
 
-#### Supported Task Types
-- **Object Detection and Sorting**: "Sort red and blue objects into separate zones"
-- **Precise Manipulation**: "Pick up object and place it at coordinates (0.15, -0.15, 0.18)"
-- **Gripper Control**: "Open gripper, pick up object, close gripper, move to home"
-- **Multi-Step Workflows**: "Detect objects, pick each one, stack them at location X"
-- **Conditional Behaviors**: "If red object detected, place in red zone, otherwise place in blue zone"
+#### 支援的任務類型
+- **物件檢測和排序**："將紅色和藍色物件排序到單獨區域"
+- **精確操作**："拿起物件並將其放置在坐標 (0.15, -0.15, 0.18)"
+- **夾爪控制**："開啟夾爪，拿起物件，關閉夾爪，移動到原位"
+- **多步驟工作流程**："檢測物件，一一拿起它們，將它們堆疊在位置 X"
+- **條件行為**："如果檢測到紅色物件，將其放置在紅色區域，否則放置在藍色區域"
 
-#### Task Description Best Practices
-1. **Be Specific**: Include exact coordinates when precision is needed
-2. **Mention Colors**: "red blocks", "blue objects" for color-based sorting
-3. **Include End State**: "return to home position", "ensure gripper is open"
-4. **Specify Zones**: "red zone", "blue zone", "stacking area"
-5. **Use Action Verbs**: "detect", "pick up", "place", "sort", "stack"
+#### 任務描述最佳實務
+1. **具體說明**：需要精確度時包含確切坐標
+2. **提及顏色**："紅色積木"、"藍色物件" 用於基於顏色的排序
+3. **包含結束狀態**："返回原位"、"確保夾爪是開啟的"
+4. **指定區域**："紅色區域"、"藍色區域"、"堆疊區域"
+5. **使用動作動詞**："檢測"、"拿起"、"放置"、"排序"、"堆疊"
 
-#### Generated Behavior Capabilities
-- **Vision Integration**: Automatic YOLO detection integration for object recognition
-- **Coordinate Control**: Precise positioning with configurable place_x, place_y, place_z
-- **Gripper Management**: Automatic gripper control with open/close behaviors
-- **Error Recovery**: Robust error handling with graceful failure modes
-- **Real-time Status**: Live execution monitoring via JSON status publishing
+#### 生成的行為功能
+- **視覺整合**：自動 YOLO 檢測整合以進行物件辨識
+- **坐標控制**：使用可配置的 place_x、place_y、place_z 進行精確定位
+- **夾爪管理**：自動夾爪控制與開啟/關閉行為
+- **錯誤恢復**：強健的錯誤處理與優雅的失敗模式
+- **即時狀態**：通過 JSON 狀態發佈進行即時執行監控
 
-### Custom Prompt Templates
-You can modify the behavior tree prompt template by editing the global constants in `llm_node.py`:
+### 自訂提示範本
+您可以通過編輯 `llm_node.py` 中的全域常數來修改行為樹提示範本：
 
 ```python
 BEHAVIOR_TREE_PROMPT_TEMPLATE = """
-Your custom prompt template here...
+您的自訂提示範本在此...
 {task_description}
 """
 ```
 
-### Integration with Other Nodes
-The LLM node is designed to work with:
-- **Behavior Tree Node** (for automated task planning and execution)
-- **Robot Control Node** (for physical execution)
-- **Speech Recognition Node** (for voice commands)
+### 與其他節點整合
+LLM 節點設計為與以下節點配合使用：
+- **行為樹節點**（用於自動化任務規劃和執行）
+- **機器人控制節點**（用於物理執行）
+- **語音辨識節點**（用於語音命令）
 
-### Enhanced Workflow
-1. **Task Input**: Natural language task description via service call
-2. **LLM Processing**: Gemini/OpenAI generates behavior tree JSON
-3. **Auto-Assembly**: JSON automatically assembled into executable behavior tree
-4. **Visualization**: Tree structure saved as PNG in `/frames` directory  
-5. **Execution**: Behavior tree runs immediately with real-time status updates
+### 增強工作流程
+1. **任務輸入**：通過服務呼叫接收自然語言任務描述
+2. **LLM 處理**：Gemini/OpenAI 生成行為樹 JSON 結構
+3. **自動組裝**：JSON 自動組裝成可執行的行為樹
+4. **視覺化**：樹狀結構以 PNG 格式儲存在 `/frames` 目錄中
+5. **執行**：行為樹立即運行並提供即時狀態更新
 
-### Service Dependencies
-- **Required**: `/assemble_behavior_tree` service (behavior_tree/AssembleBehaviorTree) from behavior_tree node for auto-assembly
-- **Optional**: Visualization services for enhanced debugging
+### 服務依賴項
+- **必要**：來自行為樹節點的 `/assemble_behavior_tree` 服務 (behavior_tree/AssembleBehaviorTree) 用於自動組裝
+- **可選**：用於增強除錯的視覺化服務
 
-**Updated Service Interface**:
+**更新的服務介面**：
 ```
-# /assemble_behavior_tree service
-string behavior_tree_json    # JSON configuration to assemble
+# /assemble_behavior_tree 服務
+string behavior_tree_json    # 要組裝的 JSON 配置
 ---
-bool success                 # Assembly success status
-string message              # Status message or error details
+bool success                 # 組裝成功狀態
+string message              # 狀態訊息或錯誤詳細資訊
 ```
 
-### Performance Considerations
-- Gemini provider generally provides better JSON compliance
-- Response times vary based on prompt complexity
-- Consider caching for repeated queries
-- Auto-assembly adds minimal overhead (~100ms) for immediate execution
+### 效能考量
+- Gemini 提供者通常提供更好的 JSON 相容性
+- 回應時間根據提示複雜度而變化
+- 考慮對重複查詢進行快取
+- 自動組裝增加最小的額外負荷（~100ms）以進行立即執行
 
-## New Features
+## 新功能
 
-### Auto-Assembly Integration (Latest Update)
+### 自動組裝整合（最新更新）
 
-The LLM node now features seamless integration with the behavior tree assembly service:
+LLM 節點現在具有與行為樹組裝服務的無縫整合：
 
-#### Key Benefits
-- **One-Step Workflow**: Single service call from task description to running behavior tree
-- **Automatic Error Recovery**: Graceful fallback if assembly service unavailable
-- **Flexible Control**: Optional `auto_assemble` parameter for manual control
-- **Enhanced Feedback**: Detailed status messages for both JSON generation and assembly
+#### 主要優點
+- **一步工作流程**：單一服務呼叫從任務描述轉換為運行的行為樹
+- **自動錯誤恢復**：如果組裝服務不可用，優雅地回退
+- **靈活控制**：可選的 `auto_assemble` 參數用於手動控制
+- **增強回饋**：JSON 生成和組裝的詳細狀態訊息
 
-#### Usage Patterns
+#### 使用模式
 
-**Full Automation (Recommended)**:
+**完整自動化（推薦）**：
 ```bash
 rosservice call /generate_behavior_tree "
-task_description: 'your task here'
+task_description: '您的任務在此'
 auto_assemble: true
 "
 ```
 
-**JSON Generation Only**:
+**僅 JSON 生成**：
 ```bash
-rosservice call /generate_behavior_tree "{task_description: 'your task here', auto_assemble: false}"
+rosservice call /generate_behavior_tree "{task_description: '您的任務在此', auto_assemble: false}"
 ```
 
-**Backward Compatibility**:
+**向後相容性**：
 ```bash
-# auto_assemble defaults to true if omitted
-rosservice call /generate_behavior_tree "task_description: 'your task here'"
+# 如果省略，auto_assemble 預設為 true
+rosservice call /generate_behavior_tree "task_description: '您的任務在此'"
 ```
 
-#### Error Handling
-- **Assembly Unavailable**: Returns JSON with warning message, allows manual assembly later
-- **JSON Invalid**: Clear error messages with both original and cleaned responses
-- **Service Reconnection**: Automatic retry logic for assembly service connections
+#### 錯誤處理
+- **組裝不可用**：返回帶警告訊息的 JSON，允許稍後手動組裝
+- **JSON 無效**：清除錯誤訊息，包含原始和清理的回應
+- **服務重新連線**：組裝服務連線的自動重試邏輯
 
 ---
 
-## Testing
+## 測試
 
-### Automated Testing
-Use the included comprehensive test script:
+### 自動化測試
+使用包含的綜合測試腳本：
 
 ```bash
-# In the Docker container
+# 在 Docker 容器中
 cd /root/catkin_ws
 source devel/setup.bash
 
-# Start behavior tree node first (required for auto-assembly tests)
+# 首先啟動行為樹節點（自動組裝測試所需）
 rosrun behavior_tree behavior_tree_node.py &
 
-# Start LLM node
+# 啟動 LLM 節點
 rosrun llm llm_node.py _provider:=gemini &
 
-# Run comprehensive tests
+# 運行綜合測試
 rosrun llm test_behavior_tree_generation.py
 ```
 
-The test script includes:
-- **Auto-assembly enabled tests**: Verifies end-to-end workflow
-- **JSON-only tests**: Validates generation without assembly
-- **Error handling tests**: Confirms graceful failure modes
-- **Multiple task types**: Tests various complexity levels
+測試腳本包括：
+- **啟用自動組裝的測試**：驗證端到端工作流程
+- **僅 JSON 測試**：驗證不進行組裝的生成
+- **錯誤處理測試**：確認優雅的失敗模式
+- **多種任務類型**：測試各種複雜度等級
 
-### Manual Testing
+### 手動測試
 ```bash
-# Test basic functionality
+# 測試基本功能
 rosservice call /llm_status
 
-# Test JSON generation only
-rosservice call /generate_behavior_tree "{task_description: 'pick up object', auto_assemble: false}"
+# 測試僅 JSON 生成
+rosservice call /generate_behavior_tree "{task_description: '拿起物件', auto_assemble: false}"
 
-# Test full workflow  
+# 測試完整工作流程
 rosservice call /generate_behavior_tree "
-task_description: 'sort red and blue blocks'
+task_description: '排序紅色和藍色積木'
 auto_assemble: true
 "
 
-# Check behavior tree status
+# 檢查行為樹狀態
 rostopic echo /behavior_tree_status
 ```
 
-For more information or issues, please refer to the project documentation or create an issue in the repository.
+有關更多資訊或問題，請參考專案文件或在儲存庫中建立問題。
 
-## System Architecture
+## 系統架構
 
-### Component Integration
-The LLM node is part of a comprehensive robotic system with the following components:
+### 元件整合
+LLM 節點是具有以下元件的綜合機器人系統的一部分：
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
@@ -740,63 +679,63 @@ The LLM node is part of a comprehensive robotic system with the following compon
                         └────────────────┘
 ```
 
-### Data Flow
-1. **Task Input**: Natural language description received via `/llm_service`
-2. **Behavior Generation**: LLM creates behavior tree JSON structure
-3. **Tree Assembly**: Behavior tree node assembles and executes behaviors
-4. **Vision Integration**: YOLO detection provides object coordinates
-5. **Robot Execution**: Physical robot performs manipulation tasks
-6. **Status Monitoring**: Real-time feedback via JSON publishing
+### 資料流程
+1. **任務輸入**：通過 `/llm_service` 接收自然語言描述
+2. **行為生成**：LLM 建立行為樹 JSON 結構
+3. **樹狀組裝**：行為樹節點組裝並執行行為
+4. **視覺整合**：YOLO 檢測提供物件坐標
+5. **機器人執行**：物理機器人執行操作任務
+6. **狀態監控**：通過 JSON 發佈進行即時回饋
 
-### Deployment Configuration
+### 部署配置
 
-#### Full System Launch
+#### 完整系統啟動
 ```bash
-# Launch all system components
+# 啟動所有系統元件
 roslaunch niryo_web_interface all_nodes.launch
 ```
 
-#### Component Status Monitoring
+#### 元件狀態監控
 ```bash
-# Monitor behavior tree execution
+# 監控行為樹執行
 rostopic echo /behavior_tree_status
 
-# Monitor detected objects
+# 監控檢測到的物件
 rostopic echo /detected_objects_json
 
-# Check LLM service availability
+# 檢查 LLM 服務可用性
 rosservice info /llm_service
 ```
 
-#### System Health Checks
+#### 系統健康檢查
 ```bash
-# Verify all nodes are running
+# 驗證所有節點是否正在運行
 rosnode list
 
-# Check service availability
+# 檢查服務可用性
 rosservice list | grep -E "(llm|behavior|robot)"
 
-# Monitor topic activity
+# 監控主題活動
 rostopic hz /behavior_tree_status
 ```
 
-## Dependencies
+## 依賴項
 
-### Required ROS Packages
-- `rospy`: ROS Python bindings
-- `std_msgs`: Standard ROS message types
-- `behavior_tree`: Custom behavior tree package (for auto-assembly)
+### 必要的 ROS 套件
+- `rospy`：ROS Python 繫結
+- `std_msgs`：標準 ROS 訊息類型
+- `behavior_tree`：自訂行為樹套件（用於自動組裝）
 
-### Python Dependencies
-- `google-generativeai`: Google Gemini API
-- `openai`: OpenAI API
-- `json`: JSON parsing
-- `re`: Regular expressions
+### Python 依賴項
+- `google-generativeai`：Google Gemini API
+- `openai`：OpenAI API
+- `json`：JSON 解析
+- `re`：正規表示式
 
-### System Requirements
+### 系統需求
 - ROS Noetic
 - Python 3.8+
-- Internet connection for LLM APIs
-- Valid API keys for chosen provider
+- 網際網路連線用於 LLM API
+- 所選提供者的有效 API 金鑰
 
 ````
