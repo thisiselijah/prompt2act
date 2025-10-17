@@ -135,10 +135,12 @@ def image_callback(msg):
         return
     
     # 準備 ArUco 標記資訊供其他節點使用
+    # ✅ 優化：直接傳送計算好的透視變換矩陣 M，避免其他節點重複計算
     aruco_info = {
         "detected": True,
+        "transform_matrix": M.tolist() if M is not None else None,  # 3x3 矩陣
         "aruco0_center": aruco_points.get(0, [0, 0]).tolist() if 0 in aruco_points else None,
-        "all_markers": {int(marker_id): aruco_points[marker_id].tolist() for marker_id in aruco_points}
+        "marker_count": len(aruco_points)
     }
 
     # YOLO 偵測

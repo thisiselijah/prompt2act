@@ -314,39 +314,23 @@ def process_frames():
                     # 攝影機讀取成功，重置錯誤標記
                     camera_error_logged = False
                     
-                    # 使用從 YOLO 節點接收到的 ArUco 標記資訊來計算透視變換矩陣
+                    # ✅ 優化：直接使用 YOLO 節點計算好的透視變換矩陣，避免重複計算
                     if aruco_markers_info and aruco_markers_info.get("detected"):
-                        all_markers = aruco_markers_info.get("all_markers", {})
+                        transform_matrix = aruco_markers_info.get("transform_matrix")
                         
-                        # ✅ 修正：JSON 序列化會將整數鍵轉換為字串，需要轉換回整數
-                        try:
-                            all_markers_int = {int(k): v for k, v in all_markers.items()}
-                            
-                            # 檢查是否有足夠的標記點 (需要 ID 0, 1, 2, 3)
-                            required_ids = [0, 1, 2, 3]
-                            if all(marker_id in all_markers_int for marker_id in required_ids):
-                                src_pts = np.array([
-                                    all_markers_int[3],  # 左上
-                                    all_markers_int[2],  # 右上
-                                    all_markers_int[1],  # 右下
-                                    all_markers_int[0],  # 左下
-                                ], dtype="float32")
-                                
-                                dst_pts = np.array([
-                                    [0, 0],
-                                    [1, 0],
-                                    [1, 1],
-                                    [0, 1],
-                                ], dtype="float32")
-                                
-                                M = cv2.getPerspectiveTransform(src_pts, dst_pts)
-                                rospy.loginfo_throttle(5.0, "✅ 成功計算透視變換矩陣，ArUco 標記 [0,1,2,3] 已偵測")
-                            else:
-                                available_ids = sorted(list(all_markers_int.keys()))
-                                rospy.logwarn_throttle(10.0, 
-                                    f"⚠️ ArUco 標記不足，需要 ID [0,1,2,3]，目前檢測到: {available_ids}")
-                        except (ValueError, TypeError) as e:
-                            rospy.logerr_throttle(10.0, f"❌ ArUco 標記資料格式錯誤: {e}")
+                        if transform_matrix is not None:
+                            try:
+                                # 直接使用接收到的透視變換矩陣
+                                M = np.array(transform_matrix, dtype='float32')
+                                marker_count = aruco_markers_info.get("marker_count", 0)
+                                rospy.loginfo_throttle(5.0, 
+                                    f"✅ 已接收透視變換矩陣 (偵測到 {marker_count} 個 ArUco 標記)")
+                            except (ValueError, TypeError) as e:
+                                rospy.logerr_throttle(10.0, f"❌ 透視變換矩陣格式錯誤: {e}")
+                                M = None
+                        else:
+                            rospy.logwarn_throttle(10.0, "⚠️ 未收到透視變換矩陣，可能 ArUco 標記不足")
+                            M = None
 
                     # 畫出 YOLO 偵測框（使用最新 detected_objects）
                     for obj in detected_objects:
