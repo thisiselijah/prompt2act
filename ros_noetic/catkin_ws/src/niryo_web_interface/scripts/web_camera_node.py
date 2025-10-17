@@ -98,6 +98,7 @@ aruco_markers_info = None  # 全域變數，儲存 ArUco 標記資訊
 
 # ========== Debug Mode ==========
 debug_mode_enabled = False  # Global flag for debug mode
+debug_info_alpha = 0.7  # Debug info background transparency (0.0-1.0)
 
 def yolo_result_callback(msg):
     global detected_objects, white_region_coords, aruco_markers_info
@@ -140,13 +141,14 @@ def behavior_tree_callback(msg):
 rospy.Subscriber('/behavior_tree_json', String, behavior_tree_callback)
 
 # ========== Debug Mode Drawing Functions ==========
-def draw_coordinate_axes(frame, M, scale=0.1):
+def draw_coordinate_axes(frame, M, scale=0.1, alpha=0.7):
     """
     Draw coordinate axes on the frame based on perspective transform
     Args:
         frame: OpenCV frame
         M: Perspective transform matrix
         scale: Length of axes in normalized coordinates (0-1)
+        alpha: Background transparency (0.0 = fully transparent, 1.0 = fully opaque)
     """
     try:
         # 確保 M 不是 None
@@ -192,7 +194,7 @@ def draw_coordinate_axes(frame, M, scale=0.1):
         overlay = frame.copy()
         cv2.rectangle(overlay, (ox + 8, oy - label_h - 18), 
                      (ox + label_w + 18, oy - 3), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+        cv2.addWeighted(overlay, alpha, frame, 1-alpha, 0, frame)
         
         cv2.putText(frame, label, (ox + 12, oy - 8), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
@@ -202,13 +204,14 @@ def draw_coordinate_axes(frame, M, scale=0.1):
     except Exception as e:
         rospy.logwarn_throttle(5.0, f"Failed to draw coordinate axes: {e}")
 
-def draw_debug_info(frame, detected_objects, white_region_coords):
+def draw_debug_info(frame, detected_objects, white_region_coords, alpha=0.7):
     """
     Draw debug information on the frame
     Args:
         frame: OpenCV frame
         detected_objects: List of detected objects with coordinates
         white_region_coords: White region coordinates
+        alpha: Background transparency (0.0 = fully transparent, 1.0 = fully opaque)
     """
     try:
         import math
@@ -216,7 +219,7 @@ def draw_debug_info(frame, detected_objects, white_region_coords):
         # Draw title with semi-transparent background
         overlay = frame.copy()
         cv2.rectangle(overlay, (5, 5), (350, 40), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+        cv2.addWeighted(overlay, alpha, frame, 1-alpha, 0, frame)
         cv2.putText(frame, "DEBUG MODE", (10, 30), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
         
@@ -241,7 +244,7 @@ def draw_debug_info(frame, detected_objects, white_region_coords):
             # Draw semi-transparent background for each object info
             overlay = frame.copy()
             cv2.rectangle(overlay, (5, y_offset - 18), (450, y_offset + 58), (0, 0, 0), -1)
-            cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+            cv2.addWeighted(overlay, alpha, frame, 1-alpha, 0, frame)
             
             # Draw info text with confidence
             info_text = f"{i+1}. {color_name} {class_name} (conf: {confidence:.2f})"
@@ -275,7 +278,7 @@ def draw_debug_info(frame, detected_objects, white_region_coords):
         if white_region_coords:
             overlay = frame.copy()
             cv2.rectangle(overlay, (5, y_offset - 18), (400, y_offset + 30), (0, 0, 0), -1)
-            cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+            cv2.addWeighted(overlay, alpha, frame, 1-alpha, 0, frame)
             
             cv2.putText(frame, f"White Region:", (10, y_offset), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
@@ -323,13 +326,21 @@ def process_frames():
                                 # 直接使用接收到的透視變換矩陣
                                 M = np.array(transform_matrix, dtype='float32')
                                 marker_count = aruco_markers_info.get("marker_count", 0)
-                                rospy.loginfo_throttle(5.0, 
-                                    f"✅ 已接收透視變換矩陣 (偵測到 {marker_count} 個 ArUco 標記)")
+                                # 優化：減少頻繁的成功訊息，只在狀態改變時記錄
+                                if not hasattr(process_frames, 'last_marker_count') or process_frames.last_marker_count != marker_count:
+                                    process_frames.last_marker_count = marker_count
+                                    rospy.loginfo(f"📍 ArUco markers detected: {marker_count} markers")
                             except (ValueError, TypeError) as e:
-                                rospy.logerr_throttle(10.0, f"❌ 透視變換矩陣格式錯誤: {e}")
+                                # 優化：錯誤訊息更簡潔，只記錄一次
+                                if not hasattr(process_frames, 'transform_error_logged'):
+                                    process_frames.transform_error_logged = True
+                                    rospy.logerr(f"Transform matrix error: {str(e)[:50]}...")
                                 M = None
                         else:
-                            rospy.logwarn_throttle(10.0, "⚠️ 未收到透視變換矩陣，可能 ArUco 標記不足")
+                            # 優化：減少警告訊息頻率，只在狀態改變時記錄
+                            if not hasattr(process_frames, 'no_transform_logged') or process_frames.no_transform_logged:
+                                process_frames.no_transform_logged = False
+                                rospy.logwarn("Waiting for ArUco markers...")
                             M = None
 
                     # 畫出 YOLO 偵測框（使用最新 detected_objects）
@@ -357,14 +368,14 @@ def process_frames():
         # Debug mode 繪製（移到外層，適用於所有情況）
         if frame is not None and debug_mode_enabled:
             if M is not None:
-                draw_coordinate_axes(frame, M, scale=0.2)
+                draw_coordinate_axes(frame, M, scale=0.2, alpha=debug_info_alpha)
             else:
                 # 即使沒有 M，也顯示提示訊息
                 cv2.putText(frame, "DEBUG MODE - Waiting for ArUco markers", 
                            (10, frame.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 
                            0.6, (0, 255, 255), 2)
             
-            draw_debug_info(frame, detected_objects, white_region_coords)
+            draw_debug_info(frame, detected_objects, white_region_coords, alpha=debug_info_alpha)
 
         # 更新全域影像
         if frame is not None:
@@ -624,6 +635,41 @@ def debug_mode_status():
     
     return jsonify({
         "debug_mode": debug_mode_enabled
+    })
+
+@app.route('/set_debug_transparency', methods=['POST'])
+def set_debug_transparency():
+    """Set debug info transparency"""
+    global debug_info_alpha
+    
+    data = request.get_json()
+    if data and 'alpha' in data:
+        alpha = float(data['alpha'])
+        if 0.0 <= alpha <= 1.0:
+            debug_info_alpha = alpha
+            return jsonify({
+                "success": True,
+                "alpha": debug_info_alpha,
+                "message": f"Debug transparency set to {debug_info_alpha:.2f}"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": "Alpha must be between 0.0 and 1.0"
+            }), 400
+    
+    return jsonify({
+        "success": False,
+        "message": "Missing alpha parameter"
+    }), 400
+
+@app.route('/get_debug_transparency', methods=['GET'])
+def get_debug_transparency():
+    """Get current debug transparency setting"""
+    global debug_info_alpha
+    
+    return jsonify({
+        "alpha": debug_info_alpha
     })
 
 # ========== 主程式 ==========

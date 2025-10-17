@@ -131,6 +131,10 @@ def image_callback(msg):
         ], dtype="float32")
 
         M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+        # 優化：只在首次成功計算時記錄
+        if not hasattr(image_callback, 'transform_logged'):
+            image_callback.transform_logged = True
+            rospy.loginfo("🔧 Perspective transform matrix computed")
     else:
         return
     
@@ -164,7 +168,10 @@ def image_callback(msg):
                     robot_x, robot_y = camera_to_robot_coords(wx, wy)
                     white_region_coords = {"x": robot_x, "y": robot_y}
                     white_region_detected = True
-                    rospy.loginfo(f"White region detected at {white_region_coords}")
+                    # 優化：只記錄一次白色區域偵測
+                    if not hasattr(image_callback, 'white_region_logged'):
+                        image_callback.white_region_logged = True
+                        rospy.loginfo(f"📍 Work area detected at ({robot_x:.3f}, {robot_y:.3f}m)")
 
                 # 不要把 white_region 加進 detections_list，因為它只是工作區塊
                 continue

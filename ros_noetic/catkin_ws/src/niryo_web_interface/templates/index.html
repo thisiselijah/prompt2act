@@ -50,6 +50,26 @@
               🐛 Debug Mode
             </button>
           </div>
+          <!-- Debug Transparency Control -->
+          <div
+            class="debug-transparency-control"
+            id="transparency-control"
+            style="display: none"
+          >
+            <label for="transparency-slider" class="transparency-label">
+              透明度: <span id="transparency-value">70%</span>
+            </label>
+            <input
+              type="range"
+              id="transparency-slider"
+              min="0"
+              max="100"
+              value="70"
+              step="5"
+              oninput="updateTransparency(this.value)"
+              class="transparency-slider"
+            />
+          </div>
         </div>
         <div class="camera-container">
           <img

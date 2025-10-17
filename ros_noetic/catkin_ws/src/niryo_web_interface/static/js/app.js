@@ -176,6 +176,7 @@ function toggleDebugMode() {
     debugModeEnabled = !debugModeEnabled;
 
     const btn = document.getElementById('debug-mode-btn');
+    const transparencyControl = document.getElementById('transparency-control');
 
     apiCall('/toggle_debug_mode', {
         body: JSON.stringify({ enabled: debugModeEnabled })
@@ -185,10 +186,14 @@ function toggleDebugMode() {
                 if (debugModeEnabled) {
                     btn.classList.add('active');
                     btn.textContent = '🐛 Debug: ON';
+                    transparencyControl.style.display = 'block';
                     showToast('Debug mode enabled - 顯示座標軸與座標資訊', 'info');
+                    // Load current transparency setting
+                    loadTransparencySetting();
                 } else {
                     btn.classList.remove('active');
                     btn.textContent = '🐛 Debug Mode';
+                    transparencyControl.style.display = 'none';
                     showToast('Debug mode disabled', 'info');
                 }
             }
@@ -199,6 +204,43 @@ function toggleDebugMode() {
         });
 }
 
+// Debug transparency control functions
+function updateTransparency(value) {
+    const percentage = parseInt(value);
+    const alpha = percentage / 100;
+
+    // Update display value
+    document.getElementById('transparency-value').textContent = `${percentage}%`;
+
+    // Send to server
+    apiCall('/set_debug_transparency', {
+        body: JSON.stringify({ alpha: alpha })
+    })
+        .then(data => {
+            if (data.success) {
+                showToast(`透明度已設定為 ${percentage}%`, 'success', 1500);
+            } else {
+                showToast(`設定透明度失敗: ${data.message}`, 'error');
+            }
+        })
+        .catch(error => {
+            showToast(`設定透明度失敗: ${error.message}`, 'error');
+        });
+}
+
+function loadTransparencySetting() {
+    fetch('/get_debug_transparency')
+        .then(response => response.json())
+        .then(data => {
+            const percentage = Math.round(data.alpha * 100);
+            document.getElementById('transparency-slider').value = percentage;
+            document.getElementById('transparency-value').textContent = `${percentage}%`;
+        })
+        .catch(error => {
+            console.error('Failed to load transparency setting:', error);
+        });
+}
+
 // Check debug mode status on page load
 function checkDebugModeStatus() {
     fetch('/debug_mode_status')
@@ -206,9 +248,18 @@ function checkDebugModeStatus() {
         .then(data => {
             debugModeEnabled = data.debug_mode;
             const btn = document.getElementById('debug-mode-btn');
+            const transparencyControl = document.getElementById('transparency-control');
+
             if (debugModeEnabled) {
                 btn.classList.add('active');
                 btn.textContent = '🐛 Debug: ON';
+                transparencyControl.style.display = 'block';
+                // Load current transparency setting
+                loadTransparencySetting();
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = '🐛 Debug Mode';
+                transparencyControl.style.display = 'none';
             }
         })
         .catch(err => {
