@@ -80,12 +80,11 @@ aruco_params = cv2.aruco.DetectorParameters()
 
 # 桌面尺寸 (cm)
 TABLE_WIDTH_CM = 30
-TABLE_HEIGHT_CM = 29
-
+TABLE_HEIGHT_CM = 30
 # --- 校準參數 ---
 # 這些值應該通過校準過程來設定
-calibrated_origin_x = 0.0  # 米
-calibrated_origin_y = 0.0  # 米
+calibrated_origin_x = 0.07  # 米
+calibrated_origin_y = 0.04 # 米
 origin_calibrated = False  # 標記是否已校準
 
 # --- 座標轉換 ---
@@ -155,7 +154,7 @@ def calibrate_aruco_origin(corners, ids, frame, M):
                 
                 # 假設標記 ID=3 應該在機器人座標系的 (0, 0) 位置
                 # 因此我們需要將原點調整為負的當前位置
-                calibrated_origin_x = -current_robot_x
+                calibrated_origin_x = +current_robot_x
                 calibrated_origin_y = -current_robot_y
                 origin_calibrated = True
                 
