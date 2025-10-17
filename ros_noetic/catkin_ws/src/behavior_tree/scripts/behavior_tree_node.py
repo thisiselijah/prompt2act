@@ -899,12 +899,6 @@ def assemble_behavior_tree_service():
             # Assemble the behavior tree based on JSON configuration
             root = assemble_tree_from_json(tree_config)
             
-            # Check if root was successfully created
-            if root is None:
-                error_msg = "Failed to create behavior tree root from configuration"
-                rospy.logerr(error_msg)
-                return AssembleBehaviorTreeResponse(success=False, message=error_msg)
-            
             # Store the assembled tree globally
             global current_behavior_tree, last_tree_config, current_tick_count
             current_behavior_tree = py_trees.trees.BehaviourTree(root)
@@ -948,6 +942,11 @@ def assemble_behavior_tree_service():
                 return AssembleBehaviorTreeResponse(success=True, 
                     message=f"Behavior tree assembled with setup warnings: {setup_error}")
             
+        except ValueError as validation_error:
+            error_msg = str(validation_error)
+            rospy.logerr(error_msg)
+            return AssembleBehaviorTreeResponse(success=False, message=error_msg)
+
         except json.JSONDecodeError as e:
             error_msg = f"Failed to parse JSON: {str(e)}"
             rospy.logerr(error_msg)
@@ -965,89 +964,74 @@ def assemble_behavior_tree_service():
 
 def assemble_tree_from_json(config):
     """
-    Assemble a behavior tree from JSON configuration
-    Args:
-        config (dict): JSON configuration for the behavior tree
-    Returns:
-        py_trees behavior: Root of the assembled tree, or None if failed
+    Assemble a behavior tree from JSON configuration.
+
+    Raises:
+        ValueError: When the provided configuration is invalid.
     """
     if not config:
-        rospy.logerr("Empty configuration provided")
-        return None
-        
+        raise ValueError("無效的樹狀結構：配置為空 (empty configuration)")
+    if not isinstance(config, dict):
+        raise ValueError("無效的樹狀結構：根節點必須為 JSON 物件")
+
     root_type = config.get('type')
     root_name = config.get('name', 'Root')
-    
+
+    if root_type not in ('sequence', 'selector'):
+        raise ValueError(f"無效的樹狀結構：根節點 '{root_name}' 類型 '{root_type}' 不支援 (use 'sequence' or 'selector')")
+
+    children_configs = config.get('children', [])
+    if not isinstance(children_configs, list) or len(children_configs) == 0:
+        raise ValueError(f"無效的樹狀結構：根節點 '{root_name}' 缺少子節點")
+
     if root_type == 'sequence':
         root = py_trees.composites.Sequence(root_name, memory=False)
-        
-        # Add children from the configuration
-        for child_config in config.get('children', []):
-            child = create_behavior_from_config(child_config)
-            if child:
-                root.add_child(child)
-            else:
-                rospy.logwarn(f"Failed to create child behavior from config: {child_config}")
-                
-    elif root_type == 'selector':
-        root = py_trees.composites.Selector(root_name, memory=False)
-        
-        # Add children from the configuration
-        for child_config in config.get('children', []):
-            child = create_behavior_from_config(child_config)
-            if child:
-                root.add_child(child)
-            else:
-                rospy.logwarn(f"Failed to create child behavior from config: {child_config}")
-                
     else:
-        # Unknown root behavior type
-        rospy.logerr(f"Unknown or missing root behavior type: {root_type}")
-        return None
-    
-    # Validate that root has at least one child
-    if len(root.children) == 0:
-        rospy.logerr(f"Root behavior '{root_name}' has no valid children")
-        return None
-    
+        root = py_trees.composites.Selector(root_name, memory=False)
+
+    for index, child_config in enumerate(children_configs, start=1):
+        try:
+            child = create_behavior_from_config(child_config)
+        except ValueError as child_error:
+            raise ValueError(f"無效的樹狀結構：子節點 #{index} 解析失敗 → {child_error}") from child_error
+        root.add_child(child)
+
     rospy.loginfo(f"Successfully assembled {root_type} root with {len(root.children)} children")
     return root
 
 def create_behavior_from_config(config):
-    """
-    Create individual behaviors from configuration
-    Args:
-        config (dict): Configuration for a single behavior
-    Returns:
-        py_trees behavior: The created behavior, or None if failed
+    """Create individual behaviors from configuration.
+
+    Raises:
+        ValueError: When the behavior configuration is invalid.
     """
     if not config:
-        rospy.logwarn("Empty behavior configuration provided")
-        return None
-        
+        raise ValueError("無效的樹狀結構：行為節點配置為空")
+    if not isinstance(config, dict):
+        raise ValueError("無效的樹狀結構：行為節點必須為 JSON 物件")
+
     behavior_type = config.get('type')
     behavior_name = config.get('name', 'UnnamedBehavior')
-    
+    if not behavior_type:
+        raise ValueError(f"無效的樹狀結構：節點 '{behavior_name}' 缺少 'type' 欄位")
+
     try:
         if behavior_type == 'detect_objects':
             return DetectObjects(behavior_name)
-        elif behavior_type == 'pick_up':
+        if behavior_type == 'pick_up':
             return PickUp(behavior_name)
-        elif behavior_type == 'place_down':
-            # Allow custom place coordinates from config (optional)
-            # If not specified, will use blackboard white_region coordinates
-            place_x = config.get('place_x')  # None if not specified - will use blackboard
-            place_y = config.get('place_y')  # None if not specified - will use blackboard
-            place_z = config.get('place_z', 0.18)  # Default to 0.18
+        if behavior_type == 'place_down':
+            place_x = config.get('place_x')
+            place_y = config.get('place_y')
+            place_z = config.get('place_z', 0.18)
             return PlaceDown(behavior_name, place_x, place_y, place_z)
-        elif behavior_type == 'open_gripper':
+        if behavior_type == 'open_gripper':
             return OpenGripper(behavior_name)
-        elif behavior_type == 'close_gripper':
+        if behavior_type == 'close_gripper':
             return CloseGripper(behavior_name)
-        elif behavior_type == 'move_to_home':
+        if behavior_type == 'move_to_home':
             return MoveToHome(behavior_name)
-        elif behavior_type == 'move_to_pose':
-            # Allow custom pose coordinates from config
+        if behavior_type == 'move_to_pose':
             x = config.get('pose_x', 0.0)
             y = config.get('pose_y', 0.0)
             z = config.get('pose_z', 0.0)
@@ -1055,42 +1039,40 @@ def create_behavior_from_config(config):
             pitch = config.get('pose_pitch', 0.0)
             yaw = config.get('pose_yaw', 0.0)
             return MoveToSpecificPose(behavior_name, x, y, z, roll, pitch, yaw)
-        elif behavior_type == 'move_above_object':
-            # Allow custom object targeting parameters from config
+        if behavior_type == 'move_above_object':
             target_object_class = config.get('target_object_class', 'cube')
             target_color = config.get('target_color', 'blue')
             z_offset = config.get('z_offset', 0.1)
             return MoveAboveObject(behavior_name, target_object_class, target_color, z_offset)
-        elif behavior_type == 'move_to_white_region':
-            # Allow custom height parameter and max attempts from config
+        if behavior_type == 'move_to_white_region':
             z_height = config.get('z_height', 0.3)
             max_attempts = config.get('max_attempts', 10)
             return MoveToWhiteRegion(behavior_name, z_height, max_attempts)
-        elif behavior_type == 'sequence':
+        if behavior_type == 'sequence':
+            children = config.get('children', [])
+            if not isinstance(children, list) or len(children) == 0:
+                raise ValueError(f"無效的樹狀結構：Sequence 節點 '{behavior_name}' 缺少子節點")
             sequence = py_trees.composites.Sequence(behavior_name, memory=False)
-            for child_config in config.get('children', []):
+            for index, child_config in enumerate(children, start=1):
                 child = create_behavior_from_config(child_config)
-                if child:
-                    sequence.add_child(child)
-                else:
-                    rospy.logwarn(f"Failed to create child for sequence '{behavior_name}'")
+                sequence.add_child(child)
             return sequence
-        elif behavior_type == 'selector':
+        if behavior_type == 'selector':
+            children = config.get('children', [])
+            if not isinstance(children, list) or len(children) == 0:
+                raise ValueError(f"無效的樹狀結構：Selector 節點 '{behavior_name}' 缺少子節點")
             selector = py_trees.composites.Selector(behavior_name, memory=False)
-            for child_config in config.get('children', []):
+            for index, child_config in enumerate(children, start=1):
                 child = create_behavior_from_config(child_config)
-                if child:
-                    selector.add_child(child)
-                else:
-                    rospy.logwarn(f"Failed to create child for selector '{behavior_name}'")
+                selector.add_child(child)
             return selector
-        else:
-            rospy.logerr(f"Unknown behavior type: {behavior_type}")
-            return None
-            
-    except Exception as e:
-        rospy.logerr(f"Error creating behavior '{behavior_name}' of type '{behavior_type}': {e}")
-        return None
+
+        raise ValueError(f"無效的樹狀結構：未支援的節點類型 '{behavior_type}'")
+
+    except ValueError:
+        raise
+    except Exception as error:
+        raise ValueError(f"無效的樹狀結構：節點 '{behavior_name}' ({behavior_type}) 初始化失敗 → {error}")
     
 # Hello World Service
 def hello_world_service():
@@ -1250,14 +1232,17 @@ def main():
                         rospy.logwarn(f"⚠️ Task running for {current_tick_count} ticks, will timeout in {remaining_ticks} ticks ({remaining_time:.1f}s)")
                 
                 elif status == py_trees.common.Status.INVALID:
-                    rospy.logwarn(f"⚠️ Behavior tree has invalid status after {current_tick_count} ticks")
-                    
-                    # Check if invalid status persists for too long
-                    if current_tick_count > 100:  # Reset after many invalid ticks
-                        rospy.logerr("Resetting behavior tree due to persistent invalid status")
-                        cleanup_behavior_tree(current_behavior_tree)
-                        current_behavior_tree = None
-                        current_tick_count = 0
+                    rospy.logwarn(f"⚠️ Behavior tree entered INVALID state at tick {current_tick_count}. Clearing tree to avoid repeated errors.")
+
+                    # Publish final status before cleanup for debugging purposes
+                    if json_publisher and JSON_SERIALIZATION_AVAILABLE:
+                        json_publisher.publish_tree_data(current_behavior_tree, include_structure=True)
+
+                    # Immediately clean up to prevent continuous error messages
+                    cleanup_behavior_tree(current_behavior_tree)
+                    current_behavior_tree = None
+                    current_tick_count = 0
+                    rospy.loginfo("Invalid behavior tree cleared. Ready for new task.")
             
             # Sleep to maintain the desired rate
             rate.sleep()
