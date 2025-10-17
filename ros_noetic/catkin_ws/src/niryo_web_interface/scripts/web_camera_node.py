@@ -594,11 +594,16 @@ def voice_command():
     save_path = "/tmp/recording.webm"
     audio_file.save(save_path)
 
+    # 語言參數：允許透過表單或查詢字串指定，自動回退到中文
+    language = request.form.get('language') or request.args.get('language')
+    if not language:
+        language = 'zh-TW'
+
     # 呼叫 ROS Service
     rospy.wait_for_service("/process_audio_command")
     try:
         process_audio = rospy.ServiceProxy("/process_audio_command", ProcessAudioCommand)
-        resp = process_audio(audio_file_path=save_path, language="en-US")
+        resp = process_audio(audio_file_path=save_path, language=language)
 
         return jsonify({
             "success": resp.success,
