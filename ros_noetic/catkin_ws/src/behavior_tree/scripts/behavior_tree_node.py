@@ -180,14 +180,59 @@ class PickUp(py_trees.behaviour.Behaviour):
                 # Return RUNNING instead of FAILURE to allow retrying when objects become available
                 return py_trees.common.Status.RUNNING
                 
-            # Pick the first detected object
-            target_object = detected_objects[0]
+            # Prefer object selected by MoveAboveObject if available
+            target_object = None
+            preferred_target = self.blackboard.get('current_target_object')
+            target_spec = self.blackboard.get('current_target_spec')
+            has_spec = bool(target_spec)
+            target_spec = target_spec or {}
+
+            if preferred_target and preferred_target in detected_objects:
+                target_object = preferred_target
+
+            if not target_object and has_spec:
+                desired_class = (target_spec.get('class') or '').lower()
+                desired_color = (target_spec.get('color') or '').lower()
+                desired_label = (target_spec.get('label') or '').lower()
+
+                for candidate in detected_objects:
+                    obj_class = (candidate.get('class') or '').lower()
+                    obj_color = (candidate.get('color') or '').lower()
+                    obj_label = (candidate.get('label') or '').lower()
+
+                    class_matches = desired_class and obj_class == desired_class
+                    color_matches = desired_color and obj_color == desired_color
+
+                    # Allow label fallback when direct fields are missing
+                    if desired_label and obj_label:
+                        class_matches = class_matches or desired_class in obj_label or obj_label in desired_class
+                        color_matches = color_matches or desired_color in obj_label or obj_label.startswith(desired_color)
+
+                    if class_matches and color_matches:
+                        target_object = candidate
+                        break
+
+            if not target_object:
+                if not detected_objects:
+                    self.logger.warn("⚠️ Detected objects list empty after filtering")
+                    return py_trees.common.Status.RUNNING
+                if has_spec:
+                    # No matching object found; avoid picking a wrong one
+                    details = [f"{obj.get('color', 'unknown')} {obj.get('class', 'unknown')}" for obj in detected_objects]
+                    details_str = ', '.join(details) if details else 'none'
+                    self.logger.warn(f"⚠️ No object matching target spec {target_spec or 'N/A'}; available: {details_str}")
+                    return py_trees.common.Status.FAILURE
+                # No spec provided; fall back to first available object for legacy trees
+                self.logger.info("🎯 No target specification provided; using first detected object")
+                target_object = detected_objects[0]
+
             x = target_object.get('x', 0.0)
             y = target_object.get('y', 0.0) 
             roll = target_object.get('roll', 0.0)
             obj_class = target_object.get('class', 'unknown')
+            obj_color = target_object.get('color', 'unknown')
             
-            self.logger.info(f"🦾 Attempting to pick up {obj_class} at ({x:.3f}, {y:.3f})")
+            self.logger.info(f"🦾 Attempting to pick up {obj_color} {obj_class} at ({x:.3f}, {y:.3f})")
             
             # Send pick command to robot
             command = f"pick_at:{x},{y},{roll}"
@@ -197,9 +242,12 @@ class PickUp(py_trees.behaviour.Behaviour):
             response = self.robot_service(req)
             
             if response.success:
-                self.logger.info(f"✅ Successfully picked up {obj_class} at ({x:.2f}, {y:.2f})")
+                self.logger.info(f"✅ Successfully picked up {obj_color} {obj_class} at ({x:.2f}, {y:.2f})")
                 # Store picked object info for place behavior
                 self.blackboard.set('picked_object', target_object)
+                # Clear current target selection once pick is completed
+                self.blackboard.set('current_target_object', None)
+                self.blackboard.set('current_target_spec', None)
                 # Remove picked object from detected list
                 detected_objects.remove(target_object)
                 self.blackboard.set('detected_objects', detected_objects)
@@ -574,10 +622,18 @@ class MoveAboveObject(py_trees.behaviour.Behaviour):
                 if class_matches and color_matches:
                     target_object = obj
                     self.logger.info(f"🎯 Found target object: {obj_color} {obj_class} (label: {obj_label})")
+                    self.blackboard.set('current_target_object', obj)
+                    self.blackboard.set('current_target_spec', {
+                        'class': self.target_object_class.lower(),
+                        'color': self.target_color.lower(),
+                        'label': obj_label
+                    })
                     break
             
             if not target_object:
                 self.logger.warn(f"⚠️ No {self.target_color} {self.target_object_class} found in detected objects")
+                self.blackboard.set('current_target_object', None)
+                self.blackboard.set('current_target_spec', None)
                 # Log available objects for debugging
                 for obj in detected_objects:
                     obj_class = obj.get('class', 'unknown')
