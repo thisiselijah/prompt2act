@@ -317,28 +317,36 @@ def process_frames():
                     # 使用從 YOLO 節點接收到的 ArUco 標記資訊來計算透視變換矩陣
                     if aruco_markers_info and aruco_markers_info.get("detected"):
                         all_markers = aruco_markers_info.get("all_markers", {})
-                        # 檢查是否有足夠的標記點 (需要 ID 0, 1, 2, 3) - 修正：使用整數而非字串
-                        required_ids = [0, 1, 2, 3]
-                        if all(marker_id in all_markers for marker_id in required_ids):
-                            src_pts = np.array([
-                                all_markers[3],  # 左上
-                                all_markers[2],  # 右上
-                                all_markers[1],  # 右下
-                                all_markers[0],  # 左下
-                            ], dtype="float32")
+                        
+                        # ✅ 修正：JSON 序列化會將整數鍵轉換為字串，需要轉換回整數
+                        try:
+                            all_markers_int = {int(k): v for k, v in all_markers.items()}
                             
-                            dst_pts = np.array([
-                                [0, 0],
-                                [1, 0],
-                                [1, 1],
-                                [0, 1],
-                            ], dtype="float32")
-                            
-                            M = cv2.getPerspectiveTransform(src_pts, dst_pts)
-                            rospy.logdebug("✅ 成功計算透視變換矩陣")
-                        else:
-                            rospy.logwarn_throttle(10.0, 
-                                f"⚠️ ArUco 標記不足，需要 ID 0-3，目前檢測到: {list(all_markers.keys())}")
+                            # 檢查是否有足夠的標記點 (需要 ID 0, 1, 2, 3)
+                            required_ids = [0, 1, 2, 3]
+                            if all(marker_id in all_markers_int for marker_id in required_ids):
+                                src_pts = np.array([
+                                    all_markers_int[3],  # 左上
+                                    all_markers_int[2],  # 右上
+                                    all_markers_int[1],  # 右下
+                                    all_markers_int[0],  # 左下
+                                ], dtype="float32")
+                                
+                                dst_pts = np.array([
+                                    [0, 0],
+                                    [1, 0],
+                                    [1, 1],
+                                    [0, 1],
+                                ], dtype="float32")
+                                
+                                M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+                                rospy.loginfo_throttle(5.0, "✅ 成功計算透視變換矩陣，ArUco 標記 [0,1,2,3] 已偵測")
+                            else:
+                                available_ids = sorted(list(all_markers_int.keys()))
+                                rospy.logwarn_throttle(10.0, 
+                                    f"⚠️ ArUco 標記不足，需要 ID [0,1,2,3]，目前檢測到: {available_ids}")
+                        except (ValueError, TypeError) as e:
+                            rospy.logerr_throttle(10.0, f"❌ ArUco 標記資料格式錯誤: {e}")
 
                     # 畫出 YOLO 偵測框（使用最新 detected_objects）
                     for obj in detected_objects:
