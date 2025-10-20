@@ -83,8 +83,8 @@ TABLE_WIDTH_CM = 30
 TABLE_HEIGHT_CM = 30
 # --- 校準參數 ---
 # 這些值應該通過校準過程來設定
-calibrated_origin_x = 0.06  # 米
-calibrated_origin_y = 0.05 # 米
+calibrated_origin_x = 0.05  # 米
+calibrated_origin_y = 0.1 # 米
 origin_calibrated = False  # 標記是否已校準
 
 # --- 座標轉換 ---
