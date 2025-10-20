@@ -82,7 +82,7 @@ origin_calibrated = False  # 標記是否已校準
 
 # --- ONNX 推論設定 ---
 ONNX_INPUT_SIZE = 640
-ONNX_CONF_THRESHOLD = 0.3
+ONNX_CONF_THRESHOLD = 0.1  # 降低信心閾值以增加偵測
 ONNX_IOU_THRESHOLD = 0.45
 DEFAULT_CLASS_NAMES = ["blue_block", "red_block", "blue_cube", "red_cube", "white_region"]
 
@@ -102,6 +102,7 @@ def load_class_names(model_file_path):
 
 
 CLASS_NAMES = load_class_names(model_path)
+rospy.loginfo(f"📋 載入類別名稱: {CLASS_NAMES}")
 
 OBJECT_MAPPING = {
     "blue_block": {"class": "cube", "color": "blue"},
@@ -190,7 +191,7 @@ def non_max_suppression(boxes, scores, iou_threshold):
 
 
 def postprocess_detections(output, original_shape, ratio, dwdh, conf_threshold, iou_threshold):
-    """將 ONNX 模型輸出轉換為可讀的偵測結果。"""
+    """將 ONNX 模型輸出轉換為可讀的偵測結果。支援 OBB 輸出格式。"""
     if output is None:
         return []
 
@@ -201,8 +202,11 @@ def postprocess_detections(output, original_shape, ratio, dwdh, conf_threshold, 
     if predictions.shape[0] <= predictions.shape[1]:
         predictions = predictions.transpose(1, 0)
 
-    boxes = predictions[:, :4]
-    scores = predictions[:, 4:]
+    # 假設 OBB 格式: [cx, cy, w, h, angle, conf1, conf2, ...]
+    boxes = predictions[:, :4]  # cx, cy, w, h
+    angles = predictions[:, 4] if predictions.shape[1] > 4 else np.zeros(predictions.shape[0])  # angle
+    scores = predictions[:, 5:] if predictions.shape[1] > 5 else predictions[:, 4:]  # 類別分數
+
     if scores.size == 0:
         return []
 
@@ -211,18 +215,21 @@ def postprocess_detections(output, original_shape, ratio, dwdh, conf_threshold, 
 
     mask = confidences > conf_threshold
     boxes = boxes[mask]
+    angles = angles[mask]
     confidences = confidences[mask]
     class_ids = class_ids[mask]
 
     if boxes.size == 0:
         return []
 
+    # 轉換為 xyxy 格式
     boxes_xyxy = np.zeros_like(boxes)
-    boxes_xyxy[:, 0] = boxes[:, 0] - boxes[:, 2] / 2
-    boxes_xyxy[:, 1] = boxes[:, 1] - boxes[:, 3] / 2
-    boxes_xyxy[:, 2] = boxes[:, 0] + boxes[:, 2] / 2
-    boxes_xyxy[:, 3] = boxes[:, 1] + boxes[:, 3] / 2
+    boxes_xyxy[:, 0] = boxes[:, 0] - boxes[:, 2] / 2  # x1
+    boxes_xyxy[:, 1] = boxes[:, 1] - boxes[:, 3] / 2  # y1
+    boxes_xyxy[:, 2] = boxes[:, 0] + boxes[:, 2] / 2  # x2
+    boxes_xyxy[:, 3] = boxes[:, 1] + boxes[:, 3] / 2  # y2
 
+    # 調整邊框座標
     dw, dh = dwdh
     boxes_xyxy[:, [0, 2]] -= dw
     boxes_xyxy[:, [1, 3]] -= dh
@@ -241,7 +248,7 @@ def postprocess_detections(output, original_shape, ratio, dwdh, conf_threshold, 
             "bbox": boxes_xyxy[idx],
             "score": float(confidences[idx]),
             "class_id": int(class_ids[idx]),
-            "angle": 0.0,  # ONNX 模型未提供旋轉資訊，暫以 0 取代
+            "angle": float(angles[idx]) if idx < len(angles) else 0.0,
         })
 
     return detections
@@ -277,11 +284,15 @@ def run_onnx_inference(frame):
     input_tensor, ratio, dwdh = preprocess_image(frame)
     try:
         outputs = onnx_session.run(None, {onnx_input_name: input_tensor})
+        output_array = outputs[0] if isinstance(outputs, list) else outputs
+        # 添加調試日誌
+        if not hasattr(run_onnx_inference, 'logged_shape'):
+            run_onnx_inference.logged_shape = True
+            rospy.loginfo(f"🔍 ONNX 輸出形狀: {output_array.shape}")
     except Exception as error:
         rospy.logerr_throttle(5.0, f"❌ ONNX 推論失敗：{error}")
         return []
 
-    output_array = outputs[0] if isinstance(outputs, list) else outputs
     return postprocess_detections(
         output_array,
         frame.shape[:2],
@@ -431,6 +442,10 @@ def image_callback(msg):
 
     detections_list = []
     onnx_detections = run_onnx_inference(frame)
+
+    # 添加調試日誌
+    if onnx_detections:
+        rospy.loginfo_throttle(5.0, f"🔍 ONNX 偵測到 {len(onnx_detections)} 個物件")
 
     for detection in onnx_detections:
         class_id = detection.get("class_id", -1)
