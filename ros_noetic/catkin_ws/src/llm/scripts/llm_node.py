@@ -70,7 +70,7 @@ Available behavior types:
 - place_down: For placing objects at specified coordinates (supports place_x, place_y, place_z parameters)
 - open_gripper: For opening the robot gripper
 - close_gripper: For closing the robot gripper
-- move_to_home: For moving robot to home/rest position (only include when the task involves pose changes or object manipulation)
+- move_to_home: For moving robot to home/rest position (only include when the task involves pose changes and object manipulation simultaneously)
 - move_to_pose: For moving robot to a specific pose (supports pose_x, pose_y, pose_z, pose_roll, pose_pitch, pose_yaw parameters)
 - move_above_object: For moving robot above a detected object (supports target_object_class, target_color, z_offset parameters)
 - move_to_white_region: For moving robot to the white region work area (supports z_height parameter)
@@ -79,7 +79,11 @@ Available behavior types:
 
 IMPORTANT: For irrelevant instructions (non-robotics tasks like "tell me a joke", "what's the weather", "sing a song", "dance", etc.), return an empty behavior tree with just a sequence root and no children. Do not attempt to create robot behaviors for non-robotics tasks.
 
-IMPORTANT: For gripper-only instructions (like "open gripper", "close gripper", "release gripper"), do NOT include move_to_home action. Only include move_to_home when the task involves actual pose changes or object manipulation that requires returning to a safe position.
+IMPORTANT: For gripper-only instructions (like "open gripper", "close gripper", "release gripper"), do NOT include move_to_home action. Only include move_to_home when the task involves actual pose changes and object manipulation simultaneously that requires returning to a safe position.
+
+IMPORTANT: "place_z": 0.18 should not be changed for standard place_down actions unless specified otherwise.
+
+IMPORTANT: The unit for all position and pose parameters is in meters.
 
 Return ONLY this JSON format (replace content as needed):
 {{
