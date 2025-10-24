@@ -9,6 +9,7 @@ import rospy
 import json
 import os
 import time
+import re
 from std_srvs.srv import SetBool, SetBoolResponse
 from std_msgs.msg import String
 from behavior_tree.srv import helloworld, helloworldResponse, AssembleBehaviorTree, AssembleBehaviorTreeResponse
@@ -502,9 +503,27 @@ class MoveToHome(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.FAILURE
 
 class MoveToSpecificPose(py_trees.behaviour.Behaviour):
-    """Behavior to move robot to a specific pose (x, y, z, roll, pitch, yaw)"""
+    """Behavior to move robot to a specific or relative pose"""
     
-    def __init__(self, name, x=0.0, y=0.0, z=0.0, roll=0.0, pitch=0.0, yaw=0.0):
+    def __init__(
+        self,
+        name,
+        x=0.0,
+        y=0.0,
+        z=0.0,
+        roll=0.0,
+        pitch=0.0,
+        yaw=0.0,
+        x_offset=0.0,
+        y_offset=0.0,
+        z_offset=0.0,
+        roll_offset=0.0,
+        pitch_offset=0.0,
+        yaw_offset=0.0,
+        is_relative=False,
+        reference_frame="base_link",
+        offset_units="meters"
+    ):
         super(MoveToSpecificPose, self).__init__(name)
         self.logger = py_trees.logging.Logger(name)
         self.robot_service = None
@@ -514,6 +533,16 @@ class MoveToSpecificPose(py_trees.behaviour.Behaviour):
         self.roll = roll
         self.pitch = pitch
         self.yaw = yaw
+        self.x_offset = x_offset
+        self.y_offset = y_offset
+        self.z_offset = z_offset
+        self.roll_offset = roll_offset
+        self.pitch_offset = pitch_offset
+        self.yaw_offset = yaw_offset
+        self.is_relative = is_relative
+        self.reference_frame = reference_frame or "base_link"
+        self.offset_units = offset_units or "meters"
+        self.blackboard = py_trees.blackboard.Blackboard()
         
     def setup(self, timeout=None):
         """Setup the robot control service client"""
@@ -523,6 +552,101 @@ class MoveToSpecificPose(py_trees.behaviour.Behaviour):
         except Exception as e:
             self.logger.error(f"Setup failed: {e}")
             return False
+
+    def _units_to_meters(self):
+        units = (self.offset_units or "meters").lower()
+        if units in ("meter", "meters", "m"):
+            return 1.0
+        if units in ("centimeter", "centimeters", "cm"):
+            return 0.01
+        if units in ("millimeter", "millimeters", "mm"):
+            return 0.001
+        return 1.0
+
+    def _parse_pose_message(self, message):
+        if not message:
+            return None
+        numbers = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", message)
+        if len(numbers) < 6:
+            return None
+        try:
+            values = list(map(float, numbers[:6]))
+            return tuple(values)
+        except ValueError:
+            return None
+
+    def _get_current_pose(self):
+        if not self.robot_service:
+            return None
+        try:
+            req = RobotCommandRequest()
+            req.command = "get_current_pose"
+            response = self.robot_service(req)
+            if response.success:
+                pose = self._parse_pose_message(response.message)
+                if pose:
+                    return pose
+                self.logger.warn("⚠️ Could not parse current pose response, falling back to absolute command")
+            else:
+                self.logger.warn(f"⚠️ Failed to query current pose: {response.message}")
+        except Exception as exc:
+            self.logger.error(f"❌ Error retrieving current pose: {exc}")
+        return None
+
+    def _get_reference_pose(self):
+        if not self.is_relative:
+            return None
+        pose = self._get_current_pose()
+        if pose:
+            return pose
+        picked = self.blackboard.get('picked_object') or {}
+        if picked:
+            x = picked.get('x', 0.0)
+            y = picked.get('y', 0.0)
+            z = picked.get('z', 0.18)
+            roll = picked.get('roll', 0.0)
+            pitch = 1.438
+            yaw = -0.35
+            self.logger.warn("⚠️ Using picked object pose as relative reference")
+            return (x, y, z, roll, pitch, yaw)
+        self.logger.warn("⚠️ No reference pose available for relative move; using configured absolute pose")
+        return None
+
+    def _compute_target_pose(self):
+        unit_factor = self._units_to_meters()
+        additional_offsets = (
+            self.x_offset * unit_factor,
+            self.y_offset * unit_factor,
+            self.z_offset * unit_factor,
+            self.roll_offset,
+            self.pitch_offset,
+            self.yaw_offset
+        )
+
+        if self.is_relative:
+            reference_pose = self._get_reference_pose()
+            if reference_pose:
+                deltas = (
+                    self.x * unit_factor + additional_offsets[0],
+                    self.y * unit_factor + additional_offsets[1],
+                    self.z * unit_factor + additional_offsets[2],
+                    self.roll + additional_offsets[3],
+                    self.pitch + additional_offsets[4],
+                    self.yaw + additional_offsets[5]
+                )
+                return tuple(ref + delta for ref, delta in zip(reference_pose, deltas))
+            # Fall back to absolute semantics if we have no reference.
+            self.logger.warn("⚠️ Relative move fallback: applying offsets directly to configured pose")
+
+        absolute_pose = (
+            self.x + additional_offsets[0],
+            self.y + additional_offsets[1],
+            self.z + additional_offsets[2],
+            self.roll + additional_offsets[3],
+            self.pitch + additional_offsets[4],
+            self.yaw + additional_offsets[5]
+        )
+        return absolute_pose
 
     def update(self):
         """Execute move to specific pose behavior"""
@@ -537,11 +661,22 @@ class MoveToSpecificPose(py_trees.behaviour.Behaviour):
                 return py_trees.common.Status.FAILURE
             
         try:
-            self.logger.info(f"🤖 Moving to pose ({self.x:.3f}, {self.y:.3f}, {self.z:.3f}), "
-                           f"rotation ({self.roll:.3f}, {self.pitch:.3f}, {self.yaw:.3f})")
+            target_pose = self._compute_target_pose()
+            if not target_pose:
+                self.logger.error("❌ Unable to determine target pose")
+                return py_trees.common.Status.FAILURE
+
+            tx, ty, tz, troll, tpitch, tyaw = target_pose
+
+            if self.is_relative:
+                self.logger.info(f"🤖 Relative move -> target pose ({tx:.3f}, {ty:.3f}, {tz:.3f}), "
+                                 f"rotation ({troll:.3f}, {tpitch:.3f}, {tyaw:.3f})")
+            else:
+                self.logger.info(f"🤖 Moving to absolute pose ({tx:.3f}, {ty:.3f}, {tz:.3f}), "
+                                 f"rotation ({troll:.3f}, {tpitch:.3f}, {tyaw:.3f})")
             
             # Send move to pose command to robot
-            command = f"move_to_pose:{self.x},{self.y},{self.z},{self.roll},{self.pitch},{self.yaw}"
+            command = f"move_to_pose:{tx},{ty},{tz},{troll},{tpitch},{tyaw}"
             req = RobotCommandRequest()
             req.command = command
             
@@ -1094,7 +1229,33 @@ def create_behavior_from_config(config):
             roll = config.get('pose_roll', 0.0)
             pitch = config.get('pose_pitch', 0.0)
             yaw = config.get('pose_yaw', 0.0)
-            return MoveToSpecificPose(behavior_name, x, y, z, roll, pitch, yaw)
+            x_offset = config.get('pose_x_offset', 0.0)
+            y_offset = config.get('pose_y_offset', 0.0)
+            z_offset = config.get('pose_z_offset', 0.0)
+            roll_offset = config.get('pose_roll_offset', 0.0)
+            pitch_offset = config.get('pose_pitch_offset', 0.0)
+            yaw_offset = config.get('pose_yaw_offset', 0.0)
+            is_relative = config.get('is_relative', False)
+            reference_frame = config.get('reference_frame', 'base_link')
+            offset_units = config.get('offset_units', 'meters')
+            return MoveToSpecificPose(
+                behavior_name,
+                x,
+                y,
+                z,
+                roll,
+                pitch,
+                yaw,
+                x_offset,
+                y_offset,
+                z_offset,
+                roll_offset,
+                pitch_offset,
+                yaw_offset,
+                is_relative,
+                reference_frame,
+                offset_units
+            )
         if behavior_type == 'move_above_object':
             target_object_class = config.get('target_object_class', 'cube')
             target_color = config.get('target_color', 'blue')

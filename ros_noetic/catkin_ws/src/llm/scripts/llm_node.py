@@ -54,26 +54,26 @@ IMPORTANT: Respond in English only.
 
 Requirements:
 1. Root node must be 'sequence' or 'selector'
-2. Include appropriate behavior types: 'detect_objects', 'pick_up', 'place_down', 'place_with_offset', 'open_gripper', 'close_gripper', 'move_to_home' (only when pose changes are involved)
+2. Include appropriate behavior types: 'detect_objects', 'pick_up', 'place_down', 'open_gripper', 'close_gripper', 'move_to_home' (only when pose changes are involved)
 3. Use proper nesting for complex behaviors
 4. Each node must have 'type' and 'name' fields
 5. Composite nodes (sequence/selector) must have 'children' array
 6. Leaf nodes (behavior actions) should NOT have 'children' field
 7. For 'place_down' behavior, you can optionally include 'place_x', 'place_y', 'place_z' parameters
-8. For 'place_with_offset' behavior, always include 'offset_x', 'offset_y', and 'offset_z' in meters (convert centimeters to meters, e.g., 5 cm -> 0.05). Use positive 'offset_y' for "left" instructions and negative for "right".
-9. Use only double quotes (") for strings, no single quotes
-10. No trailing commas
-11. All string values must be properly escaped
+8. Use only double quotes (") for strings, no single quotes
+9. No trailing commas
+10. All string values must be properly escaped
+11. When instructions include relative motions like "shift left 5 cm" or "move forward 10 centimeters", convert centimeters to meters (5 cm = 0.05 m) and create a 'move_to_pose' node that captures the offset in the pose_* fields (use pose_*_offset helper fields when helpful) and set is_relative to true.
+12. Use the following axis mapping for relative offsets: forward -> +pose_x, backward -> -pose_x, left -> +pose_y, right -> -pose_y, up -> +pose_z, down -> -pose_z. Keep roll/pitch/yaw at 0.0 unless the user specifies an orientation change.
 
 Available behavior types:
 - detect_objects: For detecting objects in the environment using YOLO vision
 - pick_up: For picking up objects using robot arm and gripper
 - place_down: For placing objects at specified coordinates (supports place_x, place_y, place_z parameters)
-- place_with_offset: For placing objects using relative offsets from the picked location (requires offset_x, offset_y, offset_z parameters in meters)
 - open_gripper: For opening the robot gripper
 - close_gripper: For closing the robot gripper
 - move_to_home: For moving robot to home/rest position (only include when the task involves pose changes and object manipulation simultaneously)
-- move_to_pose: For moving robot to a specific pose (supports pose_x, pose_y, pose_z, pose_roll, pose_pitch, pose_yaw parameters)
+- move_to_pose: For moving robot to a specific pose or to apply relative offsets (supports pose_x, pose_y, pose_z, pose_roll, pose_pitch, pose_yaw, optional pose_*_offset helper fields, plus is_relative, reference_frame, and offset_units metadata)
 - move_above_object: For moving robot above a detected object (supports target_object_class, target_color, z_offset parameters)
 - move_to_white_region: For moving robot to the white region work area (supports z_height parameter)
 - sequence: Execute children in order (all must succeed)
@@ -163,6 +163,38 @@ Example with move_to_pose:
   ]
 }}
 
+Example for relative offset command "Pick up the cube and shift left 5 cm":
+{{
+    "type": "sequence",
+    "name": "PickAndShiftLeft",
+    "children": [
+        {{
+            "type": "detect_objects",
+            "name": "DetectObjects"
+        }},
+        {{
+            "type": "pick_up",
+            "name": "PickUpCube"
+        }},
+        {{
+            "type": "move_to_pose",
+            "name": "ShiftLeft5cm",
+            "pose_x": 0.0,
+            "pose_y": 0.05,
+            "pose_z": 0.0,
+            "pose_roll": 0.0,
+            "pose_pitch": 0.0,
+            "pose_yaw": 0.0,
+            "pose_x_offset": 0.0,
+            "pose_y_offset": 0.05,
+            "pose_z_offset": 0.0,
+            "is_relative": true,
+            "reference_frame": "base_link",
+            "offset_units": "meters"
+        }}
+    ]
+}}
+
 Example for complex pick-and-place task "Pick up the blue cube and place it down to the white region":
 {{
   "type": "sequence",
@@ -230,29 +262,6 @@ Example for irrelevant instruction (return empty tree):
   "children": []
 }}
 
-Example for offset placement task "Pick the object and shift left 5 cm":
-{
-    "type": "sequence",
-    "name": "PickAndPlaceWithOffset",
-    "children": [
-        {
-            "type": "detect_objects",
-            "name": "DetectObjects"
-        },
-        {
-            "type": "pick_up",
-            "name": "PickUpObject"
-        },
-        {
-            "type": "place_with_offset",
-            "name": "PlaceWithOffset",
-            "offset_x": 0.0,
-            "offset_y": 0.05,
-            "offset_z": 0.0
-        }
-    ]
-}
-
 Task: {task_description}
 """
 
@@ -273,7 +282,7 @@ BEHAVIOR_TREE_SCHEMA = {
                 "properties": {
                     "type": {
                         "type": "string",
-                        "enum": ["detect_objects", "pick_up", "place_down", "place_with_offset", "open_gripper", "close_gripper", "move_to_home", "move_to_pose", "move_above_object", "move_to_white_region", "sequence", "selector"]
+                        "enum": ["detect_objects", "pick_up", "place_down", "open_gripper", "close_gripper", "move_to_home", "move_to_pose", "move_above_object", "move_to_white_region", "sequence", "selector"]
                     },
                     "name": {
                         "type": "string"
@@ -285,15 +294,6 @@ BEHAVIOR_TREE_SCHEMA = {
                         "type": "number"
                     },
                     "place_z": {
-                        "type": "number"
-                    },
-                    "offset_x": {
-                        "type": "number"
-                    },
-                    "offset_y": {
-                        "type": "number"
-                    },
-                    "offset_z": {
                         "type": "number"
                     },
                     "pose_x": {
@@ -313,6 +313,33 @@ BEHAVIOR_TREE_SCHEMA = {
                     },
                     "pose_yaw": {
                         "type": "number"
+                    },
+                    "pose_x_offset": {
+                        "type": "number"
+                    },
+                    "pose_y_offset": {
+                        "type": "number"
+                    },
+                    "pose_z_offset": {
+                        "type": "number"
+                    },
+                    "pose_roll_offset": {
+                        "type": "number"
+                    },
+                    "pose_pitch_offset": {
+                        "type": "number"
+                    },
+                    "pose_yaw_offset": {
+                        "type": "number"
+                    },
+                    "is_relative": {
+                        "type": "boolean"
+                    },
+                    "reference_frame": {
+                        "type": "string"
+                    },
+                    "offset_units": {
+                        "type": "string"
                     },
                     "target_object_class": {
                         "type": "string"
