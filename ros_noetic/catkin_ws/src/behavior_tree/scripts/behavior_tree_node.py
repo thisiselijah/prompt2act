@@ -313,18 +313,43 @@ class PlaceDown(py_trees.behaviour.Behaviour):
                 # Return RUNNING to wait for an object to be picked
                 return py_trees.common.Status.RUNNING
             
-            # Get place coordinates from blackboard white_region if not specified
+            # Get place coordinates - priority order:
+            # 1. Explicitly specified coordinates (self.place_x/y)
+            # 2. Use current robot position (after relative move)
+            # 3. Fall back to white region if available
             if self.place_x is None or self.place_y is None:
-                white_region = self.blackboard.get('white_region')
-                if white_region:
-                    self.place_x = white_region.get('x', 0.15)
-                    self.place_y = white_region.get('y', -0.15)
-                    self.logger.info(f"📍 Using white region coordinates from blackboard: ({self.place_x:.3f}, {self.place_y:.3f})")
-                else:
-                    # Fallback to default coordinates if white region not available
-                    self.place_x = 0.15
-                    self.place_y = -0.15
-                    self.logger.warn("⚠️ No white region found in blackboard, using default coordinates")
+                # Try to get current robot position first (for relative moves)
+                try:
+                    req = RobotCommandRequest()
+                    req.command = "get_current_pose"
+                    response = self.robot_service(req)
+                    
+                    if response.success:
+                        # Parse the current pose from response
+                        import re
+                        numbers = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", response.message)
+                        if len(numbers) >= 6:
+                            self.place_x = float(numbers[0])
+                            self.place_y = float(numbers[1])
+                            self.logger.info(f"📍 Using current robot position for place: ({self.place_x:.3f}, {self.place_y:.3f})")
+                        else:
+                            raise ValueError("Could not parse current pose")
+                    else:
+                        raise ValueError("Failed to get current pose")
+                        
+                except Exception as e:
+                    # If we can't get current position, fall back to white region
+                    self.logger.warn(f"⚠️ Could not get current position: {e}, falling back to white region")
+                    white_region = self.blackboard.get('white_region')
+                    if white_region:
+                        self.place_x = white_region.get('x', 0.15)
+                        self.place_y = white_region.get('y', -0.15)
+                        self.logger.info(f"📍 Using white region coordinates from blackboard: ({self.place_x:.3f}, {self.place_y:.3f})")
+                    else:
+                        # Final fallback to default coordinates
+                        self.place_x = 0.15
+                        self.place_y = -0.15
+                        self.logger.warn("⚠️ No white region found in blackboard, using default coordinates")
                 
             # Use original object orientation for placing
             roll = picked_object.get('roll', 0.0)
