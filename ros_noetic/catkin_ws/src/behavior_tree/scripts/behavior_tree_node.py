@@ -543,8 +543,8 @@ class MoveToSpecificPose(py_trees.behaviour.Behaviour):
         self.reference_frame = reference_frame or "base_link"
         self.offset_units = offset_units or "meters"
         self.blackboard = py_trees.blackboard.Blackboard()
-    self.min_lift_distance = 0.05  # meters to lift for safety during relative moves
-    self.min_lift_epsilon = 1e-4
+        self.min_lift_distance = 0.05  # meters to lift for safety during relative moves
+        self.min_lift_epsilon = 1e-4
         
     def setup(self, timeout=None):
         """Setup the robot control service client"""
