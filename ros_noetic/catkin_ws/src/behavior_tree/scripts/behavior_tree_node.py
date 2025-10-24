@@ -513,10 +513,10 @@ class MoveToSpecificPose(py_trees.behaviour.Behaviour):
         z=0.0,
         roll=0.0,
         pitch=0.0,
-        yaw=0.0,
-        x_offset=0.0,
-        y_offset=0.0,
-        z_offset=0.0,
+    yaw=0.0,
+    x_offset=0.0,
+    y_offset=0.0,
+    z_offset=0.0,
         roll_offset=0.0,
         pitch_offset=0.0,
         yaw_offset=0.0,
@@ -543,6 +543,8 @@ class MoveToSpecificPose(py_trees.behaviour.Behaviour):
         self.reference_frame = reference_frame or "base_link"
         self.offset_units = offset_units or "meters"
         self.blackboard = py_trees.blackboard.Blackboard()
+    self.min_lift_distance = 0.05  # meters to lift for safety during relative moves
+    self.min_lift_epsilon = 1e-4
         
     def setup(self, timeout=None):
         """Setup the robot control service client"""
@@ -614,39 +616,52 @@ class MoveToSpecificPose(py_trees.behaviour.Behaviour):
 
     def _compute_target_pose(self):
         unit_factor = self._units_to_meters()
-        additional_offsets = (
+
+        translation_primary = (
+            self.x * unit_factor,
+            self.y * unit_factor,
+            self.z * unit_factor
+        )
+        translation_offsets = (
             self.x_offset * unit_factor,
             self.y_offset * unit_factor,
-            self.z_offset * unit_factor,
-            self.roll_offset,
-            self.pitch_offset,
-            self.yaw_offset
+            self.z_offset * unit_factor
         )
+        rotation_primary = (self.roll, self.pitch, self.yaw)
+        rotation_offsets = (self.roll_offset, self.pitch_offset, self.yaw_offset)
+
+        translation_total = tuple(p + o for p, o in zip(translation_primary, translation_offsets))
+        rotation_total = tuple(p + o for p, o in zip(rotation_primary, rotation_offsets))
 
         if self.is_relative:
+            tx, ty, tz = translation_total
+            if abs(tz) < self.min_lift_epsilon:
+                tz = self.min_lift_distance
+                translation_total = (tx, ty, tz)
+                self.logger.info(f"Applying automatic safety lift of {self.min_lift_distance:.3f} m for relative move")
+
             reference_pose = self._get_reference_pose()
             if reference_pose:
-                deltas = (
-                    self.x * unit_factor + additional_offsets[0],
-                    self.y * unit_factor + additional_offsets[1],
-                    self.z * unit_factor + additional_offsets[2],
-                    self.roll + additional_offsets[3],
-                    self.pitch + additional_offsets[4],
-                    self.yaw + additional_offsets[5]
+                rx, ry, rz, rroll, rpitch, ryaw = reference_pose
+                return (
+                    rx + translation_total[0],
+                    ry + translation_total[1],
+                    rz + translation_total[2],
+                    rroll + rotation_total[0],
+                    rpitch + rotation_total[1],
+                    ryaw + rotation_total[2]
                 )
-                return tuple(ref + delta for ref, delta in zip(reference_pose, deltas))
-            # Fall back to absolute semantics if we have no reference.
+
             self.logger.warn("⚠️ Relative move fallback: applying offsets directly to configured pose")
 
-        absolute_pose = (
-            self.x + additional_offsets[0],
-            self.y + additional_offsets[1],
-            self.z + additional_offsets[2],
-            self.roll + additional_offsets[3],
-            self.pitch + additional_offsets[4],
-            self.yaw + additional_offsets[5]
+        return (
+            translation_total[0],
+            translation_total[1],
+            translation_total[2],
+            rotation_total[0],
+            rotation_total[1],
+            rotation_total[2]
         )
-        return absolute_pose
 
     def update(self):
         """Execute move to specific pose behavior"""
