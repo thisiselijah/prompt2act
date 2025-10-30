@@ -877,6 +877,98 @@ class MoveAboveObject(py_trees.behaviour.Behaviour):
             self.logger.error(f"❌ Error during move above object: {e}")
             return py_trees.common.Status.FAILURE
 
+class ShakeHead(py_trees.behaviour.Behaviour):
+    """Behavior to shake robot's head (roll rotation) to indicate 'I don't know' or confusion"""
+    
+    def __init__(self, name, shake_count=2, shake_angle=0.3):
+        super(ShakeHead, self).__init__(name)
+        self.logger = py_trees.logging.Logger(name)
+        self.robot_service = None
+        self.shake_count = shake_count  # Number of shakes (left-right cycles)
+        self.shake_angle = shake_angle  # Shake angle in radians (~17 degrees)
+        self.current_shake = 0
+        self.blackboard = py_trees.blackboard.Blackboard()
+        
+    def setup(self, timeout=None):
+        """Setup the robot control service client"""
+        try:
+            self.logger.info("Setup completed - will connect to robot service when needed")
+            return True
+        except Exception as e:
+            self.logger.error(f"Setup failed: {e}")
+            return False
+    
+    def update(self):
+        """Execute head shake behavior"""
+        # Connect to service if not already connected
+        if not self.robot_service:
+            try:
+                rospy.wait_for_service('/robot_command', timeout=2.0)
+                self.robot_service = rospy.ServiceProxy('/robot_command', RobotCommand)
+            except rospy.ROSException as e:
+                self.logger.error(f"Robot service not available: {e}")
+                return py_trees.common.Status.FAILURE
+        
+        try:
+            # Perform shake sequence: left -> center -> right -> center (repeated)
+            import time
+            
+            self.logger.info(f"🤷 Shaking head to indicate confusion (shake {self.current_shake + 1}/{self.shake_count})")
+            
+            # Get current pose first
+            req = RobotCommandRequest()
+            req.command = "get_pose"
+            response = self.robot_service(req)
+            
+            if not response.success:
+                self.logger.error("Failed to get current pose")
+                return py_trees.common.Status.FAILURE
+            
+            # Parse current pose (format: "x,y,z,roll,pitch,yaw")
+            pose_parts = response.message.split(',')
+            if len(pose_parts) >= 6:
+                x, y, z = float(pose_parts[0]), float(pose_parts[1]), float(pose_parts[2])
+                roll, pitch, yaw = float(pose_parts[3]), float(pose_parts[4]), float(pose_parts[5])
+            else:
+                # Use default pose if parsing fails
+                x, y, z = 0.2, 0.0, 0.25
+                roll, pitch, yaw = 0.0, 1.5, 0.0
+            
+            # Shake sequence: left -> right -> center
+            shake_positions = [
+                roll - self.shake_angle,  # Left
+                roll + self.shake_angle,  # Right
+                roll                       # Center
+            ]
+            
+            for shake_roll in shake_positions:
+                command = f"move_to_pose:{x},{y},{z},{shake_roll},{pitch},{yaw}"
+                req = RobotCommandRequest()
+                req.command = command
+                response = self.robot_service(req)
+                
+                if not response.success:
+                    self.logger.error(f"Shake movement failed: {response.message}")
+                    return py_trees.common.Status.FAILURE
+                
+                # Small delay between movements for natural motion
+                time.sleep(0.3)
+            
+            self.current_shake += 1
+            
+            if self.current_shake >= self.shake_count:
+                self.logger.info("✅ Head shake gesture completed")
+                self.current_shake = 0  # Reset for next time
+                return py_trees.common.Status.SUCCESS
+            else:
+                # Continue shaking
+                return py_trees.common.Status.RUNNING
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error during head shake: {e}")
+            return py_trees.common.Status.FAILURE
+
+
 class MoveToWhiteRegion(py_trees.behaviour.Behaviour):
     """Behavior to move robot to the white region (designated work area)"""
     
@@ -1336,6 +1428,10 @@ def create_behavior_from_config(config):
             z_height = config.get('z_height', 0.3)
             max_attempts = config.get('max_attempts', 10)
             return MoveToWhiteRegion(behavior_name, z_height, max_attempts)
+        if behavior_type == 'shake_head':
+            shake_count = config.get('shake_count', 2)
+            shake_angle = config.get('shake_angle', 0.3)
+            return ShakeHead(behavior_name, shake_count, shake_angle)
         if behavior_type == 'sequence':
             children = config.get('children', [])
             if not isinstance(children, list) or len(children) == 0:

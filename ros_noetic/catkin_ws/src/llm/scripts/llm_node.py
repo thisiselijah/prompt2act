@@ -76,10 +76,11 @@ Available behavior types:
 - move_to_pose: For moving robot to a specific pose or to apply relative offsets (supports pose_x, pose_y, pose_z, pose_roll, pose_pitch, pose_yaw, optional pose_*_offset helper fields, plus is_relative, reference_frame, and offset_units metadata)
 - move_above_object: For moving robot above a detected object (supports target_object_class, target_color, z_offset parameters)
 - move_to_white_region: For moving robot to the white region work area (supports z_height parameter)
+- shake_head: For indicating confusion or "I don't know" gesture by rotating roll (supports shake_count, shake_angle parameters)
 - sequence: Execute children in order (all must succeed)
 - selector: Try children until one succeeds
 
-IMPORTANT: For irrelevant instructions (non-robotics tasks like "tell me a joke", "what's the weather", "sing a song", "dance", etc.), return an empty behavior tree with just a sequence root and no children. Do not attempt to create robot behaviors for non-robotics tasks.
+IMPORTANT: For irrelevant instructions (non-robotics tasks like "tell me a joke", "what's the weather", "sing a song", "dance", etc.), return a shake_head behavior to indicate the robot doesn't understand. This provides a physical "I don't know" gesture that's more natural than an empty tree.
 
 IMPORTANT: For gripper-only instructions (like "open gripper", "close gripper", "release gripper"), do NOT include move_to_home action. Only include move_to_home when the task involves actual pose changes and object manipulation simultaneously that requires returning to a safe position.
 
@@ -255,11 +256,18 @@ Example for gripper-only task "Close the gripper":
   ]
 }}
 
-Example for irrelevant instruction (return empty tree):
+Example for irrelevant instruction (robot shakes head to indicate "I don't know"):
 {{
   "type": "sequence",
-  "name": "EmptyTask",
-  "children": []
+  "name": "IndicateConfusion",
+  "children": [
+    {{
+      "type": "shake_head",
+      "name": "ShakeHeadConfused",
+      "shake_count": 2,
+      "shake_angle": 0.3
+    }}
+  ]
 }}
 
 Task: {task_description}
@@ -282,7 +290,7 @@ BEHAVIOR_TREE_SCHEMA = {
                 "properties": {
                     "type": {
                         "type": "string",
-                        "enum": ["detect_objects", "pick_up", "place_down", "open_gripper", "close_gripper", "move_to_home", "move_to_pose", "move_above_object", "move_to_white_region", "sequence", "selector"]
+                        "enum": ["detect_objects", "pick_up", "place_down", "open_gripper", "close_gripper", "move_to_home", "move_to_pose", "move_above_object", "move_to_white_region", "shake_head", "sequence", "selector"]
                     },
                     "name": {
                         "type": "string"
@@ -351,6 +359,12 @@ BEHAVIOR_TREE_SCHEMA = {
                         "type": "number"
                     },
                     "z_height": {
+                        "type": "number"
+                    },
+                    "shake_count": {
+                        "type": "number"
+                    },
+                    "shake_angle": {
                         "type": "number"
                     }
                 },
