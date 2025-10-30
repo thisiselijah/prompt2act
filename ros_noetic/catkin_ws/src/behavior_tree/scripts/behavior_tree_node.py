@@ -912,10 +912,11 @@ class ShakeHead(py_trees.behaviour.Behaviour):
         # Connect to service if not already connected
         if not self.robot_service:
             try:
-                rospy.wait_for_service('/robot_command', timeout=2.0)
-                self.robot_service = rospy.ServiceProxy('/robot_command', RobotCommand)
+                rospy.wait_for_service('/arm_command', timeout=2.0)
+                self.robot_service = rospy.ServiceProxy('/arm_command', RobotCommand)
+                self.logger.info("Robot control service connected")
             except rospy.ROSException as e:
-                self.logger.error(f"Robot service not available: {e}")
+                self.logger.error(f"❌ Robot service not available: {e}")
                 return py_trees.common.Status.FAILURE
         
         try:
