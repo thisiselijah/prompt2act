@@ -621,23 +621,54 @@ class MoveToSpecificPose(py_trees.behaviour.Behaviour):
         return None
 
     def _get_reference_pose(self):
+        """
+        Get the reference pose for relative movement.
+        - First relative move after picking: apply lift (safety height)
+        - Subsequent relative moves: keep fixed height
+        - After placing: reset base height so next cycle starts fresh
+        """
         if not self.is_relative:
             return None
+
         pose = self._get_current_pose()
-        if pose:
-            return pose
-        picked = self.blackboard.get('picked_object') or {}
-        if picked:
-            x = picked.get('x', 0.0)
-            y = picked.get('y', 0.0)
-            z = picked.get('z', 0.18)
-            roll = picked.get('roll', 0.0)
-            pitch = 1.438
-            yaw = -0.35
-            self.logger.warn("⚠️ Using picked object pose as relative reference")
-            return (x, y, z, roll, pitch, yaw)
-        self.logger.warn("⚠️ No reference pose available for relative move; using configured absolute pose")
-        return None
+        if not pose:
+            picked = self.blackboard.get('picked_object') or {}
+            if picked:
+                x = picked.get('x', 0.0)
+                y = picked.get('y', 0.0)
+                z = picked.get('z', 0.18)
+                roll = picked.get('roll', 0.0)
+                pitch = 1.438
+                yaw = -0.35
+                self.logger.warn("⚠️ Using picked object pose as relative reference")
+                return (x, y, z, roll, pitch, yaw)
+            self.logger.warn("⚠️ No reference pose available for relative move; using configured absolute pose")
+            return None
+
+        x, y, z, roll, pitch, yaw = pose
+
+        # --- 取得狀態 ---
+        base_pose = self.blackboard.get("base_reference_pose")
+        placed_flag = self.blackboard.get("object_placed")  # 放下物體後標記
+
+        # --- 若剛放下物體，重設基準 ---
+        if placed_flag:
+            self.blackboard.unset("base_reference_pose")
+            self.blackboard.unset("object_placed")
+            self.logger.info("♻️ Object placed — base reference reset.")
+            base_pose = None
+
+        # --- 第一次相對移動 ---
+        if base_pose is None:
+            lifted_z = z + self.min_lift_distance
+            self.blackboard.set("base_reference_pose", (x, y, lifted_z, roll, pitch, yaw))
+            self.logger.info(f"🟢 First relative move: lifted base height to z={lifted_z:.3f}")
+            return (x, y, lifted_z, roll, pitch, yaw)
+
+        # --- 後續相對移動（保持固定高度） ---
+        _, _, base_z, _, _, _ = base_pose
+        return (x, y, base_z, roll, pitch, yaw)
+
 
     def _compute_target_pose(self):
         unit_factor = self._units_to_meters()

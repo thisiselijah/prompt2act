@@ -44,6 +44,13 @@ except Exception:
 # Cache for environment info to avoid repeated checks
 _ENV_INFO_PRINTED = False
 
+grounding_tool = types.Tool(
+    google_search=types.GoogleSearch()
+)
+config = types.GenerateContentConfig(
+    tools=[grounding_tool]
+)
+
 def print_environment_info(force: bool = False):
     """
     Print current running environment information for debugging
@@ -389,8 +396,9 @@ class GeminiProvider(LLMProvider):
     def generate_response(self, prompt: str) -> str:
         try:
             response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt
+                model="gemini-2.5-pro",
+                contents=prompt, 
+                config=config
             )
 
             # 使用共用函數提取文字，然後進行編碼清理
