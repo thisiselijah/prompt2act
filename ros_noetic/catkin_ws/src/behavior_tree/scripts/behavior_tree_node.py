@@ -941,29 +941,27 @@ class ShakeHead(py_trees.behaviour.Behaviour):
             
             self.logger.info(f"🔄 Shaking base joint (J1) {self.shake_count} times with angle ±{self.shake_angle:.3f} rad")
             
-            # Perform smooth shake sequence with gradual acceleration/deceleration
-            smooth_steps = 4  # Number of intermediate steps for smooth motion
+            # Perform simplified smooth shake sequence with larger steps
+            smooth_steps = 2  # Reduced to 2 steps for efficiency
             step_angle = self.shake_angle / smooth_steps
             
             for i in range(self.shake_count):
                 self.logger.info(f"🔄 Executing shake cycle {i+1}/{self.shake_count}")
                 
-                # === SMOOTH LEFT MOVEMENT ===
-                # Gradual acceleration to left position
+                # === SMOOTH LEFT MOVEMENT (2 steps) ===
                 for step in range(smooth_steps):
-                    current_step_angle = -step_angle * (step + 1)
                     req = RobotCommandRequest()
                     req.command = f"jog_joints:{-step_angle},0.0,0.0,0.0,0.0,0.0"
                     response = self.robot_service(req)
                     if not response.success:
                         self.logger.error(f"❌ Smooth left step {step+1} failed: {response.message}")
                         return py_trees.common.Status.FAILURE
-                    rospy.sleep(0.03)  # Very short delay for smooth motion
+                    rospy.sleep(0.02)  # Shortened delay for faster motion
                 
-                rospy.sleep(0.08)  # Brief pause at left position
+                rospy.sleep(0.05)  # Shortened pause at left position
                 
-                # === SMOOTH RIGHT MOVEMENT ===
-                # Gradual movement from left to right (double distance for full swing)
+                # === SMOOTH RIGHT MOVEMENT (2 steps) ===
+                # Move from left to right (double distance for full swing)
                 total_right_angle = 2 * self.shake_angle
                 right_step_angle = total_right_angle / smooth_steps
                 
@@ -974,12 +972,11 @@ class ShakeHead(py_trees.behaviour.Behaviour):
                     if not response.success:
                         self.logger.error(f"❌ Smooth right step {step+1} failed: {response.message}")
                         return py_trees.common.Status.FAILURE
-                    rospy.sleep(0.03)  # Very short delay for smooth motion
+                    rospy.sleep(0.02)  # Shortened delay for faster motion
                 
-                rospy.sleep(0.08)  # Brief pause at right position
+                rospy.sleep(0.05)  # Shortened pause at right position
                 
-                # === SMOOTH CENTER RETURN ===
-                # Gradual return to center position
+                # === SMOOTH CENTER RETURN (2 steps) ===
                 for step in range(smooth_steps):
                     req = RobotCommandRequest()
                     req.command = f"jog_joints:{-step_angle},0.0,0.0,0.0,0.0,0.0"
@@ -987,11 +984,11 @@ class ShakeHead(py_trees.behaviour.Behaviour):
                     if not response.success:
                         self.logger.error(f"❌ Smooth center return step {step+1} failed: {response.message}")
                         return py_trees.common.Status.FAILURE
-                    rospy.sleep(0.03)  # Very short delay for smooth motion
+                    rospy.sleep(0.02)  # Shortened delay for faster motion
                 
-                # Pause between shake cycles (except for last cycle)
+                # Shortened pause between shake cycles
                 if i < self.shake_count - 1:
-                    rospy.sleep(0.15)  # Inter-cycle pause
+                    rospy.sleep(0.08)  # Reduced inter-cycle pause
             
             # After shaking, enable learning mode for manual control
             self.logger.info("🔧 Enabling learning mode after shake gesture")
