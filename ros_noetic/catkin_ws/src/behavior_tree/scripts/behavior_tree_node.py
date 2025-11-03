@@ -941,37 +941,57 @@ class ShakeHead(py_trees.behaviour.Behaviour):
             
             self.logger.info(f"🔄 Shaking base joint (J1) {self.shake_count} times with angle ±{self.shake_angle:.3f} rad")
             
-            # Perform shake sequence by rotating joint 1 left and right
+            # Perform smooth shake sequence with gradual acceleration/deceleration
+            smooth_steps = 4  # Number of intermediate steps for smooth motion
+            step_angle = self.shake_angle / smooth_steps
+            
             for i in range(self.shake_count):
-                # Shake left (negative rotation)
-                req = RobotCommandRequest()
-                req.command = f"jog_joints:{-self.shake_angle},0.0,0.0,0.0,0.0,0.0"
-                response = self.robot_service(req)
-                if not response.success:
-                    self.logger.error(f"❌ Shake left failed: {response.message}")
-                    return py_trees.common.Status.FAILURE
+                self.logger.info(f"🔄 Executing shake cycle {i+1}/{self.shake_count}")
                 
-                rospy.sleep(0.15)  # Faster movement - reduced from 0.4s to 0.15s
+                # === SMOOTH LEFT MOVEMENT ===
+                # Gradual acceleration to left position
+                for step in range(smooth_steps):
+                    current_step_angle = -step_angle * (step + 1)
+                    req = RobotCommandRequest()
+                    req.command = f"jog_joints:{-step_angle},0.0,0.0,0.0,0.0,0.0"
+                    response = self.robot_service(req)
+                    if not response.success:
+                        self.logger.error(f"❌ Smooth left step {step+1} failed: {response.message}")
+                        return py_trees.common.Status.FAILURE
+                    rospy.sleep(0.03)  # Very short delay for smooth motion
                 
-                # Shake right (positive rotation) - double the angle to go from left to right
-                req = RobotCommandRequest()
-                req.command = f"jog_joints:{2 * self.shake_angle},0.0,0.0,0.0,0.0,0.0"
-                response = self.robot_service(req)
-                if not response.success:
-                    self.logger.error(f"❌ Shake right failed: {response.message}")
-                    return py_trees.common.Status.FAILURE
+                rospy.sleep(0.08)  # Brief pause at left position
                 
-                rospy.sleep(0.15)  # Faster movement - reduced from 0.4s to 0.15s
+                # === SMOOTH RIGHT MOVEMENT ===
+                # Gradual movement from left to right (double distance for full swing)
+                total_right_angle = 2 * self.shake_angle
+                right_step_angle = total_right_angle / smooth_steps
                 
-                # Return to center for next cycle (or final position)
-                req = RobotCommandRequest()
-                req.command = f"jog_joints:{-self.shake_angle},0.0,0.0,0.0,0.0,0.0"
-                response = self.robot_service(req)
-                if not response.success:
-                    self.logger.error(f"❌ Return to center failed: {response.message}")
-                    return py_trees.common.Status.FAILURE
+                for step in range(smooth_steps):
+                    req = RobotCommandRequest()
+                    req.command = f"jog_joints:{right_step_angle},0.0,0.0,0.0,0.0,0.0"
+                    response = self.robot_service(req)
+                    if not response.success:
+                        self.logger.error(f"❌ Smooth right step {step+1} failed: {response.message}")
+                        return py_trees.common.Status.FAILURE
+                    rospy.sleep(0.03)  # Very short delay for smooth motion
                 
-                rospy.sleep(0.1)  # Faster cycle - reduced from 0.2s to 0.1s
+                rospy.sleep(0.08)  # Brief pause at right position
+                
+                # === SMOOTH CENTER RETURN ===
+                # Gradual return to center position
+                for step in range(smooth_steps):
+                    req = RobotCommandRequest()
+                    req.command = f"jog_joints:{-step_angle},0.0,0.0,0.0,0.0,0.0"
+                    response = self.robot_service(req)
+                    if not response.success:
+                        self.logger.error(f"❌ Smooth center return step {step+1} failed: {response.message}")
+                        return py_trees.common.Status.FAILURE
+                    rospy.sleep(0.03)  # Very short delay for smooth motion
+                
+                # Pause between shake cycles (except for last cycle)
+                if i < self.shake_count - 1:
+                    rospy.sleep(0.15)  # Inter-cycle pause
             
             # After shaking, enable learning mode for manual control
             self.logger.info("🔧 Enabling learning mode after shake gesture")
