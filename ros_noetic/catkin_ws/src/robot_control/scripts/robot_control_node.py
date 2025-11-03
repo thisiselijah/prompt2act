@@ -40,9 +40,52 @@ def robot_control_service(niryo):
                 rospy.loginfo(f"Current pose: {current_pose}")
                 return RobotCommandResponse(success=True, message=f"Current pose: {current_pose}")
             
+            elif command == "get_current_joints":
+                current_joints = niryo.get_joints()
+                rospy.loginfo(f"Current joints: {current_joints}")
+                return RobotCommandResponse(success=True, message=f"Current joints: {current_joints}")
+            
             elif command == "move_to_home_and_sleep":
                 niryo.go_to_sleep()
                 rospy.loginfo("Moved to home position")
+            
+            elif command.startswith("move_joints:"):
+                # Format: move_joints:j1,j2,j3,j4,j5,j6
+                # All joint values in radians
+                parts = command.replace("move_joints:", "").split(",")
+                if len(parts) != 6:
+                    raise ValueError("Format error, should be move_joints:j1,j2,j3,j4,j5,j6")
+
+                joints = list(map(float, parts))
+                niryo.move_joints(*joints)
+                rospy.loginfo(f"Moved to joint positions: {joints}")
+            
+            elif command.startswith("shift_joint:"):
+                # Format: shift_joint:joint_id,shift_value
+                # joint_id: 1-6, shift_value in radians
+                parts = command.replace("shift_joint:", "").split(",")
+                if len(parts) != 2:
+                    raise ValueError("Format error, should be shift_joint:joint_id,shift_value")
+
+                joint_id = int(parts[0])
+                shift_value = float(parts[1])
+                
+                if joint_id < 1 or joint_id > 6:
+                    raise ValueError("Joint ID must be between 1 and 6")
+                
+                niryo.shift_joint(joint_id, shift_value)
+                rospy.loginfo(f"Shifted joint {joint_id} by {shift_value:.3f} radians")
+            
+            elif command.startswith("jog_joints:"):
+                # Format: jog_joints:j1,j2,j3,j4,j5,j6
+                # Small incremental moves in radians
+                parts = command.replace("jog_joints:", "").split(",")
+                if len(parts) != 6:
+                    raise ValueError("Format error, should be jog_joints:j1,j2,j3,j4,j5,j6")
+
+                joints = list(map(float, parts))
+                niryo.jog_joints(*joints)
+                rospy.loginfo(f"Jogged joints by: {joints}")
                 
             elif command.startswith("move_to_pose:"):
                 # Format: move_to_pose:x,y,z,roll,pitch,yaw

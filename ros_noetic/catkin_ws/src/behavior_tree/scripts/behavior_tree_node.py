@@ -878,14 +878,14 @@ class MoveAboveObject(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.FAILURE
 
 class ShakeHead(py_trees.behaviour.Behaviour):
-    """Behavior to shake robot's head (roll rotation) to indicate 'I don't know' or confusion"""
+    """Behavior to shake robot's base joint (joint 1) to indicate 'I don't know' or confusion"""
     
-    def __init__(self, name, shake_count=2, shake_angle=0.3):
+    def __init__(self, name, shake_count=2, shake_angle=0.4):
         super(ShakeHead, self).__init__(name)
         self.logger = py_trees.logging.Logger(name)
         self.robot_service = None
         self.shake_count = shake_count  # Number of shakes (left-right cycles)
-        self.shake_angle = shake_angle  # Shake angle in radians (~17 degrees)
+        self.shake_angle = shake_angle  # Shake angle in radians (~23 degrees)
         self.blackboard = py_trees.blackboard.Blackboard()
         self.shake_completed = False
         
@@ -901,10 +901,10 @@ class ShakeHead(py_trees.behaviour.Behaviour):
     def initialise(self):
         """Called when behavior is started/restarted"""
         self.shake_completed = False
-        self.logger.info("🤷 Starting head shake gesture to indicate confusion")
+        self.logger.info("🤷 Starting base rotation shake to indicate confusion or invalid command")
     
     def update(self):
-        """Execute head shake behavior"""
+        """Execute head shake behavior using joint 1 (base rotation)"""
         # If already completed, return success
         if self.shake_completed:
             return py_trees.common.Status.SUCCESS
@@ -920,67 +920,65 @@ class ShakeHead(py_trees.behaviour.Behaviour):
                 return py_trees.common.Status.FAILURE
         
         try:
-            # Get current pose first
-            req = RobotCommandRequest()
-            req.command = "get_current_pose"
-            response = self.robot_service(req)
+            # Get current joint positions
+            req_get = RobotCommandRequest()
+            req_get.command = "get_current_joints"
+            response_get = self.robot_service(req_get)
             
-            if not response.success:
-                self.logger.error("Failed to get current pose")
+            if not response_get.success:
+                self.logger.error("❌ Failed to get current joint positions")
                 return py_trees.common.Status.FAILURE
             
-            # Parse current pose from message (format: "Current pose: PoseObject(...)")
-            # Try to extract x, y, z, roll, pitch, yaw from the response
-            try:
-                import re
-                # Look for numbers in the format x, y, z, roll, pitch, yaw
-                pose_str = response.message
-                # Extract floating point numbers from the string
-                numbers = re.findall(r'[-+]?\d*\.?\d+', pose_str)
-                if len(numbers) >= 6:
-                    x, y, z, roll, pitch, yaw = [float(n) for n in numbers[:6]]
-                else:
-                    # Use default pose if parsing fails
-                    self.logger.warning("Failed to parse pose, using defaults")
-                    x, y, z = 0.2, 0.0, 0.25
-                    roll, pitch, yaw = 0.0, 1.5, 0.0
-            except Exception as parse_error:
-                self.logger.warning(f"Pose parsing error: {parse_error}, using defaults")
-                x, y, z = 0.2, 0.0, 0.25
-                roll, pitch, yaw = 0.0, 1.5, 0.0
+            # Parse current joints
+            import re
+            numbers = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", response_get.message)
+            if len(numbers) < 6:
+                self.logger.error("❌ Failed to parse current joint positions")
+                return py_trees.common.Status.FAILURE
             
-            # Perform shake sequence: left -> right -> center (repeated shake_count times)
-            import time
-            self.logger.info(f"Shaking head with {self.shake_count} cycles")
+            original_joints = list(map(float, numbers[:6]))
+            original_joint1 = original_joints[0]
             
-            for shake_num in range(self.shake_count):
-                shake_positions = [
-                    roll - self.shake_angle,  # Left
-                    roll + self.shake_angle,  # Right
-                    roll                       # Center
-                ]
+            self.logger.info(f"🔄 Shaking base joint (J1) {self.shake_count} times with angle ±{self.shake_angle:.3f} rad")
+            
+            # Perform shake sequence by rotating joint 1 left and right
+            for i in range(self.shake_count):
+                # Shake left (negative rotation)
+                req = RobotCommandRequest()
+                req.command = f"shift_joint:1,{-self.shake_angle}"
+                response = self.robot_service(req)
+                if not response.success:
+                    self.logger.error(f"❌ Shake left failed: {response.message}")
+                    return py_trees.common.Status.FAILURE
                 
-                for position_name, shake_roll in [("left", shake_positions[0]), 
-                                                   ("right", shake_positions[1]), 
-                                                   ("center", shake_positions[2])]:
-                    command = f"move_to_pose:{x},{y},{z},{shake_roll},{pitch},{yaw}"
-                    req = RobotCommandRequest()
-                    req.command = command
-                    response = self.robot_service(req)
-                    
-                    if not response.success:
-                        self.logger.error(f"Shake movement to {position_name} failed: {response.message}")
-                        return py_trees.common.Status.FAILURE
-                    
-                    # Small delay between movements for natural motion
-                    time.sleep(0.4)
+                rospy.sleep(0.4)  # Brief pause
+                
+                # Shake right (positive rotation) - double the angle to go from left to right
+                req = RobotCommandRequest()
+                req.command = f"shift_joint:1,{2 * self.shake_angle}"
+                response = self.robot_service(req)
+                if not response.success:
+                    self.logger.error(f"❌ Shake right failed: {response.message}")
+                    return py_trees.common.Status.FAILURE
+                
+                rospy.sleep(0.4)  # Brief pause
+                
+                # Return to center for next cycle (or final position)
+                req = RobotCommandRequest()
+                req.command = f"shift_joint:1,{-self.shake_angle}"
+                response = self.robot_service(req)
+                if not response.success:
+                    self.logger.error(f"❌ Return to center failed: {response.message}")
+                    return py_trees.common.Status.FAILURE
+                
+                rospy.sleep(0.2)
             
-            self.logger.info("✅ Head shake gesture completed")
+            self.logger.info("✅ Base shake gesture completed - indicating invalid/non-understanding command")
             self.shake_completed = True
             return py_trees.common.Status.SUCCESS
                 
         except Exception as e:
-            self.logger.error(f"❌ Error during head shake: {e}")
+            self.logger.error(f"❌ Error during base shake: {e}")
             return py_trees.common.Status.FAILURE
 
 
