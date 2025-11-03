@@ -3,7 +3,7 @@ import rospy
 from std_msgs.msg import Bool, String
 from robot_control.srv import RobotCommand, RobotCommandResponse
 from pyniryo import NiryoRobot
-from pyniryo import PoseObject, JointsPosition
+from pyniryo import PoseObject
 
 # --- Service section ---
 
@@ -56,35 +56,10 @@ def robot_control_service(niryo):
                 if len(parts) != 6:
                     raise ValueError("Format error, should be move_joints:j1,j2,j3,j4,j5,j6")
 
-                j1, j2, j3, j4, j5, j6 = map(float, parts)
-                joints_position = JointsPosition(j1, j2, j3, j4, j5, j6)
-                niryo.move(joints_position)
-                rospy.loginfo(f"Moved to joint positions: [{j1:.3f}, {j2:.3f}, {j3:.3f}, {j4:.3f}, {j5:.3f}, {j6:.3f}]")
-            
-            elif command.startswith("shift_joint:"):
-                # Format: shift_joint:joint_id,shift_value
-                # joint_id: 1-6, shift_value in radians
-                parts = command.replace("shift_joint:", "").split(",")
-                if len(parts) != 2:
-                    raise ValueError("Format error, should be shift_joint:joint_id,shift_value")
-
-                joint_id = int(parts[0])
-                shift_value = float(parts[1])
-                
-                if joint_id < 1 or joint_id > 6:
-                    raise ValueError("Joint ID must be between 1 and 6")
-                
-                # Get current joints
-                current_joints = niryo.get_joints()
-                
-                # Modify the specified joint
-                new_joints = list(current_joints)
-                new_joints[joint_id - 1] += shift_value
-                
-                # Move to new position using JointsPosition
-                joints_position = JointsPosition(*new_joints)
-                niryo.move(joints_position)
-                rospy.loginfo(f"Shifted joint {joint_id} by {shift_value:.3f} radians")
+                joints = list(map(float, parts))
+                # Use correct PyNiryo API: move_joints with list
+                niryo.move_joints(joints)
+                rospy.loginfo(f"Moved to joint positions: {joints}")
             
             elif command.startswith("jog_joints:"):
                 # Format: jog_joints:j1,j2,j3,j4,j5,j6
@@ -101,10 +76,9 @@ def robot_control_service(niryo):
                 # Add deltas to current positions
                 new_joints = [current + delta for current, delta in zip(current_joints, deltas)]
                 
-                # Move to new position using JointsPosition
-                joints_position = JointsPosition(*new_joints)
-                niryo.move(joints_position)
-                rospy.loginfo(f"Jogged joints by: {deltas}")
+                # Move using correct PyNiryo API
+                niryo.move_joints(new_joints)
+                rospy.loginfo(f"Jogged joints by deltas: {deltas}, new positions: {new_joints}")
                 
             elif command.startswith("move_to_pose:"):
                 # Format: move_to_pose:x,y,z,roll,pitch,yaw
