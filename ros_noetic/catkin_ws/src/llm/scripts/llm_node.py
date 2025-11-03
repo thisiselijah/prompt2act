@@ -48,12 +48,15 @@ Generate a behavior tree JSON configuration for a robot manipulation task.
 
 Task description: {task_description}
 
-IMPORTANT: If the instruction is unclear, ambiguous, or requires additional context that you don't have, first search the internet for relevant information before generating the behavior tree. This includes:
-- Technical terms you're unfamiliar with
-- Specific procedures or protocols
-- Safety requirements for particular tasks
-- Standard practices in robotics or manufacturing
-- Object specifications or handling requirements
+CRITICAL WORKFLOW:
+1. If the instruction is unclear, ambiguous, or contains unfamiliar terms, FIRST search the internet for:
+   - Technical specifications and handling requirements
+   - Standard robotics procedures and safety protocols
+   - Object properties and manipulation guidelines
+   - Industry best practices for similar tasks
+
+2. After gathering information, generate an appropriate robotics behavior tree
+3. ONLY use shake_head if the task is confirmed to be completely non-robotics related (jokes, weather, songs, etc.)
 
 IMPORTANT: Return ONLY valid JSON object with proper formatting, no explanations or additional text.
 Use double quotes for all strings and proper escaping.
@@ -83,11 +86,11 @@ Available behavior types:
 - move_to_pose: For moving robot to a specific pose or to apply relative offsets (supports pose_x, pose_y, pose_z, pose_roll, pose_pitch, pose_yaw, optional pose_*_offset helper fields, plus is_relative, reference_frame, and offset_units metadata)
 - move_above_object: For moving robot above a detected object (supports target_object_class, target_color, z_offset parameters)
 - move_to_white_region: For moving robot to the white region work area (supports z_height parameter)
-- shake_head: For indicating confusion or "I don't know" gesture by rotating roll (supports shake_count, shake_angle parameters)
+- shake_head: ONLY for completely irrelevant non-robotics tasks that cannot be interpreted as robot actions even after internet search
 - sequence: Execute children in order (all must succeed)
 - selector: Try children until one succeeds
 
-IMPORTANT: For irrelevant instructions (non-robotics tasks like "tell me a joke", "what's the weather", "sing a song", "dance", etc.), return a shake_head behavior to indicate the robot doesn't understand. This provides a physical "I don't know" gesture that's more natural than an empty tree.
+IMPORTANT: Do NOT use shake_head for unclear instructions. Instead, search the internet for clarification and generate an appropriate robotics behavior tree. Only use shake_head for completely irrelevant non-robotics tasks like "tell me a joke", "what's the weather", "sing a song", "dance", etc.
 
 IMPORTANT: For gripper-only instructions (like "open gripper", "close gripper", "release gripper"), do NOT include move_to_home action. Only include move_to_home when the task involves actual pose changes and object manipulation simultaneously that requires returning to a safe position.
 
@@ -263,7 +266,7 @@ Example for gripper-only task "Close the gripper":
   ]
 }}
 
-Example for irrelevant instruction (robot shakes head to indicate "I don't know"):
+Example for completely irrelevant non-robotics instruction (ONLY after internet search confirms it's not robotics-related):
 {{
   "type": "sequence",
   "name": "IndicateConfusion",
@@ -271,13 +274,22 @@ Example for irrelevant instruction (robot shakes head to indicate "I don't know"
     {{
       "type": "shake_head",
       "name": "ShakeHeadConfused",
-      "shake_count": 2,
-      "shake_angle": 0.3
+      "shake_count": 1,
+      "shake_angle": 0.8
     }}
   ]
 }}
 
-Task: {task_description}
+REMEMBER: 
+- ALWAYS search the internet first if unclear about any aspect of the task
+- Generate appropriate robotics behavior trees based on the information found
+- Use shake_head ONLY for confirmed non-robotics tasks after internet search
+- Default to robotics interpretation when possible
+
+Task to process: {task_description}
+
+Step 1: Search internet if needed for clarification
+Step 2: Generate appropriate robotics behavior tree JSON
 """
 
 BEHAVIOR_TREE_SCHEMA = {
