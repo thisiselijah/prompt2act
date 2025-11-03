@@ -48,6 +48,13 @@ Generate a behavior tree JSON configuration for a robot manipulation task.
 
 Task description: {task_description}
 
+IMPORTANT: If the instruction is unclear, ambiguous, or requires additional context that you don't have, first search the internet for relevant information before generating the behavior tree. This includes:
+- Technical terms you're unfamiliar with
+- Specific procedures or protocols
+- Safety requirements for particular tasks
+- Standard practices in robotics or manufacturing
+- Object specifications or handling requirements
+
 IMPORTANT: Return ONLY valid JSON object with proper formatting, no explanations or additional text.
 Use double quotes for all strings and proper escaping.
 IMPORTANT: Respond in English only.
