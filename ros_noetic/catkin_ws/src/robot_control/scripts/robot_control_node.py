@@ -3,7 +3,7 @@ import rospy
 from std_msgs.msg import Bool, String
 from robot_control.srv import RobotCommand, RobotCommandResponse
 from pyniryo import NiryoRobot
-from pyniryo import PoseObject
+from pyniryo import PoseObject, JointsPosition
 
 # --- Service section ---
 
@@ -56,9 +56,10 @@ def robot_control_service(niryo):
                 if len(parts) != 6:
                     raise ValueError("Format error, should be move_joints:j1,j2,j3,j4,j5,j6")
 
-                joints = list(map(float, parts))
-                niryo.move_joints(*joints)
-                rospy.loginfo(f"Moved to joint positions: {joints}")
+                j1, j2, j3, j4, j5, j6 = map(float, parts)
+                joints_position = JointsPosition(j1, j2, j3, j4, j5, j6)
+                niryo.move(joints_position)
+                rospy.loginfo(f"Moved to joint positions: [{j1:.3f}, {j2:.3f}, {j3:.3f}, {j4:.3f}, {j5:.3f}, {j6:.3f}]")
             
             elif command.startswith("shift_joint:"):
                 # Format: shift_joint:joint_id,shift_value
@@ -73,7 +74,16 @@ def robot_control_service(niryo):
                 if joint_id < 1 or joint_id > 6:
                     raise ValueError("Joint ID must be between 1 and 6")
                 
-                niryo.shift_joint(joint_id, shift_value)
+                # Get current joints
+                current_joints = niryo.get_joints()
+                
+                # Modify the specified joint
+                new_joints = list(current_joints)
+                new_joints[joint_id - 1] += shift_value
+                
+                # Move to new position using JointsPosition
+                joints_position = JointsPosition(*new_joints)
+                niryo.move(joints_position)
                 rospy.loginfo(f"Shifted joint {joint_id} by {shift_value:.3f} radians")
             
             elif command.startswith("jog_joints:"):
@@ -83,9 +93,18 @@ def robot_control_service(niryo):
                 if len(parts) != 6:
                     raise ValueError("Format error, should be jog_joints:j1,j2,j3,j4,j5,j6")
 
-                joints = list(map(float, parts))
-                niryo.jog_joints(*joints)
-                rospy.loginfo(f"Jogged joints by: {joints}")
+                deltas = list(map(float, parts))
+                
+                # Get current joints
+                current_joints = niryo.get_joints()
+                
+                # Add deltas to current positions
+                new_joints = [current + delta for current, delta in zip(current_joints, deltas)]
+                
+                # Move to new position using JointsPosition
+                joints_position = JointsPosition(*new_joints)
+                niryo.move(joints_position)
+                rospy.loginfo(f"Jogged joints by: {deltas}")
                 
             elif command.startswith("move_to_pose:"):
                 # Format: move_to_pose:x,y,z,roll,pitch,yaw
