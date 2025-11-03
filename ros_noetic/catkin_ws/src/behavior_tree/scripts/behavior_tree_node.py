@@ -951,7 +951,7 @@ class ShakeHead(py_trees.behaviour.Behaviour):
                     self.logger.error(f"❌ Shake left failed: {response.message}")
                     return py_trees.common.Status.FAILURE
                 
-                rospy.sleep(0.4)  # Brief pause
+                rospy.sleep(0.15)  # Faster movement - reduced from 0.4s to 0.15s
                 
                 # Shake right (positive rotation) - double the angle to go from left to right
                 req = RobotCommandRequest()
@@ -961,7 +961,7 @@ class ShakeHead(py_trees.behaviour.Behaviour):
                     self.logger.error(f"❌ Shake right failed: {response.message}")
                     return py_trees.common.Status.FAILURE
                 
-                rospy.sleep(0.4)  # Brief pause
+                rospy.sleep(0.15)  # Faster movement - reduced from 0.4s to 0.15s
                 
                 # Return to center for next cycle (or final position)
                 req = RobotCommandRequest()
@@ -971,7 +971,18 @@ class ShakeHead(py_trees.behaviour.Behaviour):
                     self.logger.error(f"❌ Return to center failed: {response.message}")
                     return py_trees.common.Status.FAILURE
                 
-                rospy.sleep(0.2)
+                rospy.sleep(0.1)  # Faster cycle - reduced from 0.2s to 0.1s
+            
+            # After shaking, enable learning mode for manual control
+            self.logger.info("🔧 Enabling learning mode after shake gesture")
+            req_learning = RobotCommandRequest()
+            req_learning.command = "enable_learning_mode"
+            response_learning = self.robot_service(req_learning)
+            
+            if response_learning.success:
+                self.logger.info("✅ Learning mode enabled - robot can now be manually controlled")
+            else:
+                self.logger.warn(f"⚠️ Failed to enable learning mode: {response_learning.message}")
             
             self.logger.info("✅ Base shake gesture completed - indicating invalid/non-understanding command")
             self.shake_completed = True
