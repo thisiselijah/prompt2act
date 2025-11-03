@@ -945,7 +945,7 @@ class ShakeHead(py_trees.behaviour.Behaviour):
             for i in range(self.shake_count):
                 # Shake left (negative rotation)
                 req = RobotCommandRequest()
-                req.command = f"shift_joint:1,{-self.shake_angle}"
+                req.command = f"jog_joints:{-self.shake_angle},0.0,0.0,0.0,0.0,0.0"
                 response = self.robot_service(req)
                 if not response.success:
                     self.logger.error(f"❌ Shake left failed: {response.message}")
@@ -955,7 +955,7 @@ class ShakeHead(py_trees.behaviour.Behaviour):
                 
                 # Shake right (positive rotation) - double the angle to go from left to right
                 req = RobotCommandRequest()
-                req.command = f"shift_joint:1,{2 * self.shake_angle}"
+                req.command = f"jog_joints:{2 * self.shake_angle},0.0,0.0,0.0,0.0,0.0"
                 response = self.robot_service(req)
                 if not response.success:
                     self.logger.error(f"❌ Shake right failed: {response.message}")
@@ -965,7 +965,7 @@ class ShakeHead(py_trees.behaviour.Behaviour):
                 
                 # Return to center for next cycle (or final position)
                 req = RobotCommandRequest()
-                req.command = f"shift_joint:1,{-self.shake_angle}"
+                req.command = f"jog_joints:{-self.shake_angle},0.0,0.0,0.0,0.0,0.0"
                 response = self.robot_service(req)
                 if not response.success:
                     self.logger.error(f"❌ Return to center failed: {response.message}")
