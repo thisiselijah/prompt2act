@@ -1,6 +1,4 @@
 # prompt2act 
-## 架構圖
-![Group 35](https://github.com/user-attachments/assets/b51bd4b0-d448-4cba-99a1-73ca58a2ba6b)
 
 ## Project Introduction / 專案介紹
 
@@ -43,6 +41,9 @@ The project follows a modular ROS-based architecture with the following main com
 - **Vision System**: YOLO-based object detection / 基於 YOLO 的物體偵測
 - **Speech Recognition**: Voice command processing / 語音指令處理
 - **Web Interface**: Real-time monitoring and control / 即時監控和控制
+
+![Group 35](https://github.com/user-attachments/assets/b51bd4b0-d448-4cba-99a1-73ca58a2ba6b)
+
 
 ### References
 ---
