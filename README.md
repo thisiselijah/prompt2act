@@ -1,4 +1,6 @@
 # prompt2act 
+## 架構圖
+<img width="2140" height="1121" alt="Group 35" src="https://github.com/user-attachments/assets/56682d2b-9c3b-4677-b2d4-a6149d423872" />
 
 ## Project Introduction / 專案介紹
 
